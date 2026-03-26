@@ -8,7 +8,7 @@ Ascend C Operator Development Environment Installer
 Usage: init.sh [level]
 
 Arguments:
-  level   - Installation level: "project" (default) or "user"
+  level   - Installation level: "project" (default) or "global"
 
 Options:
   --help  - Show this help message
@@ -16,11 +16,11 @@ Options:
 Examples:
   init.sh              # Project-level installation
   init.sh project      # Project-level installation
-  init.sh user         # User-level installation
+  init.sh global       # Global-level installation
 
 Installation paths:
   Project: .opencode/skills/
-  User:    ~/.config/opencode/skills/
+  Global:    ~/.config/opencode/skills/
 EOF
 }
 
@@ -35,12 +35,12 @@ if [ "$LEVEL" = "--help" ]; then
     exit 0
 fi
 
-if [ "$LEVEL" != "user" ] && [ "$LEVEL" != "project" ]; then
-    echo "Error: Invalid level '$LEVEL'. Must be 'user' or 'project'."
+if [ "$LEVEL" != "global" ] && [ "$LEVEL" != "project" ]; then
+    echo "Error: Invalid level '$LEVEL'. Must be 'global' or 'project'."
     exit 1
 fi
 
-if [ "$LEVEL" = "user" ]; then
+if [ "$LEVEL" = "global" ]; then
     SKILLS_ROOT_DIR="$HOME/.config/opencode/skills"
     OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
 else

@@ -33,9 +33,9 @@ cd skills/teams/ascendc-kernel-dev-team
 bash init.sh project
 ```
 
-#### 方式二：用户级安装
+#### 方式二：全局安装
 
-在用户目录下安装，配置对所有项目生效。
+在用户目录下安装，配置全局生效。
 
 ```bash
 # 1. 克隆 CANN Skills 仓库
@@ -44,15 +44,15 @@ git clone https://gitcode.com/cann/skills.git
 # 2. 进入算子直调示例目录
 cd skills/teams/ascendc-kernel-dev-team
 
-# 3. 执行初始化脚本（用户级）, 当前默认按照 opencode 格式进行安装
-bash init.sh user
+# 3. 执行初始化脚本（全局）, 当前默认按照 opencode 格式进行安装
+bash init.sh global
 ```
 
 ### 安装内容
 
 init.sh 脚本会完成以下操作：
 
-| 内容 | 项目级路径 | 用户级路径 |
+| 内容 | 项目级路径 | 全局路径 |
 |------|-----------|-----------|
 | Skills 技能模块 | `.opencode/skills/` | `~/.config/opencode/skills/` |
 | Agents 子代理 | `.opencode/agents/` | `~/.config/opencode/agents/` |
@@ -154,10 +154,10 @@ ops/add_custom/
 bash init.sh --help
 ```
 
-### Q: 项目级和用户级安装如何选择？
+### Q: 项目级和全局安装如何选择？
 
 - **项目级**：适合多项目开发，每个项目可以有不同配置
-- **用户级**：适合单一项目，全局生效
+- **全局**：适合单一项目，全局生效
 
 ### Q: 如何更新技能模块？
 

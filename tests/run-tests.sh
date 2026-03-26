@@ -655,6 +655,14 @@ main() {
         opencode)
             if ! is_platform_available "opencode"; then
                 echo "[ERROR] OpenCode CLI not found"
+                echo "[DEBUG] Environment information:"
+                echo "  - Node.js version: $(node --version 2>/dev/null || echo 'not installed')"
+                echo "  - npm version: $(npm --version 2>/dev/null || echo 'not installed')"
+                echo "  - opencode version: $(opencode --version 2>/dev/null || echo 'not installed')"
+                echo "  - which node: $(which node 2>/dev/null || echo 'not found')"
+                echo "  - which npm: $(which npm 2>/dev/null || echo 'not found')"
+                echo "  - which opencode: $(which opencode 2>/dev/null || echo 'not found')"
+                echo "  - PATH: $PATH"
                 exit 1
             fi
             ;;
