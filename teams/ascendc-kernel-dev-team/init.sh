@@ -5,26 +5,31 @@ show_help() {
     cat << 'EOF'
 Ascend C Operator Development Environment Installer
 
-Usage: init.sh [level]
+Usage: init.sh [level] [tool]
 
 Arguments:
   level   - Installation level: "project" (default) or "global"
+  tool    - Target tool: "opencode" (default) or "claude"
 
 Options:
   --help  - Show this help message
 
 Examples:
-  init.sh              # Project-level installation
-  init.sh project      # Project-level installation
-  init.sh global       # Global-level installation
+  init.sh                      # Project-level, OpenCode
+  init.sh project opencode     # Project-level, OpenCode
+  init.sh global claude        # Global-level, Claude Code
+  init.sh project claude       # Project-level, Claude Code
 
 Installation paths:
-  Project: .opencode/skills/
-  Global:    ~/.config/opencode/skills/
+  OpenCode project: .opencode/skills/
+  OpenCode global:  ~/.config/opencode/skills/
+  Claude project:   .claude/skills/
+  Claude global:    ~/.claude/skills/
 EOF
 }
 
 LEVEL="${1:-project}"
+TOOL="${2:-opencode}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
@@ -40,18 +45,44 @@ if [ "$LEVEL" != "global" ] && [ "$LEVEL" != "project" ]; then
     exit 1
 fi
 
+if [ "$TOOL" != "opencode" ] && [ "$TOOL" != "claude" ]; then
+    echo "Error: Invalid tool '$TOOL'. Must be 'opencode' or 'claude'."
+    exit 1
+fi
+
 if [ "$LEVEL" = "global" ]; then
-    SKILLS_ROOT_DIR="$HOME/.config/opencode/skills"
-    OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+    if [ "$TOOL" = "opencode" ]; then
+        SKILLS_ROOT_DIR="$HOME/.config/opencode/skills"
+        OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+    else
+        SKILLS_ROOT_DIR="$HOME/.claude/skills"
+        OPENCODE_CONFIG_DIR="$HOME/.claude"
+    fi
 else
-    SKILLS_ROOT_DIR="$PROJECT_ROOT/.opencode/skills"
-    OPENCODE_CONFIG_DIR="$PROJECT_ROOT/.opencode"
+    if [ "$TOOL" = "opencode" ]; then
+        SKILLS_ROOT_DIR="$PROJECT_ROOT/.opencode/skills"
+        OPENCODE_CONFIG_DIR="$PROJECT_ROOT/.opencode"
+    else
+        SKILLS_ROOT_DIR="$PROJECT_ROOT/.claude/skills"
+        OPENCODE_CONFIG_DIR="$PROJECT_ROOT/.claude"
+    fi
 fi
 
 echo "Installing Ascend C Operator Development Environment..."
 echo "  Level: $LEVEL"
+echo "  Tool: $TOOL"
 echo "  Skills: $SKILLS_ROOT_DIR"
 echo "  Config: $OPENCODE_CONFIG_DIR"
+echo ""
+
+echo "Removing conflicting skill: ascendc-custom-op-template..."
+for skill_root in "$PROJECT_ROOT/.opencode/skills" "$PROJECT_ROOT/.claude/skills" "$HOME/.config/opencode/skills" "$HOME/.claude/skills"; do
+    conflicting_skill="$skill_root/ascendc-custom-op-template"
+    if [ -e "$conflicting_skill" ]; then
+        rm -rf "$conflicting_skill"
+        echo "  Removed: $conflicting_skill"
+    fi
+done
 echo ""
 
 SOURCE_SKILLS_DIR="$ASCEND_AGENT_ROOT/skills"
@@ -61,6 +92,10 @@ if [ -d "$SOURCE_SKILLS_DIR" ]; then
     for skill_dir in "$SOURCE_SKILLS_DIR"/*; do
         if [ -d "$skill_dir" ]; then
             skill_name=$(basename "$skill_dir")
+            if [[ "$skill_name" == "ascendc-custom-op-template" ]]; then
+                echo "  Skipping $skill_name (excluded)"
+                continue
+            fi
             target_dir="$SKILLS_ROOT_DIR/$skill_name"
             
             if [ -e "$target_dir" ]; then
@@ -68,8 +103,8 @@ if [ -d "$SOURCE_SKILLS_DIR" ]; then
                 echo "  Removed existing: $skill_name"
             fi
             mkdir -p "$SKILLS_ROOT_DIR"
-            cp -r "$(realpath "$skill_dir")" "$target_dir"
-            echo "  Copied: $skill_name"
+            ln -s "$(realpath "$skill_dir")" "$target_dir"
+            echo "  Linked: $skill_name"
         fi
     done
     echo ""
@@ -79,10 +114,17 @@ else
 fi
 
 echo ""
-echo "Installing AGENTS.md..."
 mkdir -p "$OPENCODE_CONFIG_DIR"
-cp "$PROJECT_ROOT/AGENTS.md" "$OPENCODE_CONFIG_DIR/AGENTS.md"
-echo "  Copied: AGENTS.md -> $OPENCODE_CONFIG_DIR/AGENTS.md"
+
+if [ "$TOOL" = "opencode" ]; then
+    echo "Installing AGENTS.md..."
+    ln -sf "$PROJECT_ROOT/AGENTS.md" "$OPENCODE_CONFIG_DIR/AGENTS.md"
+    echo "  Linked: AGENTS.md -> $OPENCODE_CONFIG_DIR/AGENTS.md"
+else
+    echo "Installing CLAUDE.md..."
+    ln -sf "$PROJECT_ROOT/AGENTS.md" "$OPENCODE_CONFIG_DIR/CLAUDE.md"
+    echo "  Linked: CLAUDE.md -> $OPENCODE_CONFIG_DIR/CLAUDE.md"
+fi
 
 echo ""
 echo "Cloning asc-devkit..."

@@ -29,8 +29,9 @@ git clone https://gitcode.com/cann/skills.git
 # 2. 进入算子直调示例目录
 cd skills/teams/ascendc-kernel-dev-team
 
-# 3. 执行初始化脚本（项目级）, 当前默认按照 opencode 格式进行安装
-bash init.sh project
+# 3. 执行初始化脚本（项目级）
+bash init.sh project opencode   # OpenCode 用户（默认）
+bash init.sh project claude     # Claude Code 用户
 ```
 
 #### 方式二：全局安装
@@ -44,20 +45,19 @@ git clone https://gitcode.com/cann/skills.git
 # 2. 进入算子直调示例目录
 cd skills/teams/ascendc-kernel-dev-team
 
-# 3. 执行初始化脚本（全局）, 当前默认按照 opencode 格式进行安装
-bash init.sh global
+# 3. 执行初始化脚本（全局）
+bash init.sh global opencode    # OpenCode 用户（默认）
+bash init.sh global claude      # Claude Code 用户
 ```
 
 ### 安装内容
 
 init.sh 脚本会完成以下操作：
 
-| 内容 | 项目级路径 | 全局路径 |
-|------|-----------|-----------|
-| Skills 技能模块 | `.opencode/skills/` | `~/.config/opencode/skills/` |
-| Agents 子代理 | `.opencode/agents/` | `~/.config/opencode/agents/` |
-| AGENTS.md | `.opencode/AGENTS.md` | `~/.config/opencode/AGENTS.md` |
-| opencode.json | `.opencode/opencode.json` | `~/.config/opencode/opencode.json` |
+| 内容 | OpenCode 项目级 | OpenCode 全局 | Claude 项目级 | Claude 全局 |
+|------|----------------|---------------|---------------|-------------|
+| Skills 技能模块 | `.opencode/skills/` | `~/.config/opencode/skills/` | `.claude/skills/` | `~/.claude/skills/` |
+| AGENTS.md | `.opencode/AGENTS.md` | `~/.config/opencode/AGENTS.md` | `.claude/CLAUDE.md` | `~/.claude/CLAUDE.md` |
 
 ### 环境校验
 
