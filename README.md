@@ -4,7 +4,7 @@
 
 ### 项目定位
 
-CANN Skills 为 CANN 社区提供可复用的 Agent 技能模块。目前已实现 Ascend C 算子开发全流程覆盖（12 个 Skills），并成功应用于 Agent 实践 CANNBot。未来将拓展至 CANN 更多技术领域。
+CANN Skills 为 CANN 社区提供可复用的 Agent 技能模块。目前已实现 Ascend C 算子开发全流程覆盖（14 个 Skills），并成功应用于 Agent 实践 CANNBot。未来将拓展至 CANN 更多技术领域。
 
 ### 目标用户
 
@@ -77,6 +77,8 @@ skills/
 | **ascendc-st-design** | aclnn 接口测试用例设计、L0/L1 用例生成 |
 | **ascendc-code-review** | 代码检视方法论、5 大类别规范 |
 | **ascendc-task-focus** | 任务聚焦，解决长任务"迷失在中间"问题 |
+| **ascendc-whitebox-design** | 白盒测试用例生成 |
+| **ascendc-custom-op-to-kernel-launch** | 自定义算子转 `<<<>>>` kernel 直调 |
 
 ## Agents 智能代理
 
