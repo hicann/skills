@@ -75,7 +75,7 @@ skills:
 | 模式 | 识别规则 | 示例输入 |
 |------|----------|----------|
 | 快速检视 | 包含条款编号或类别名称 | "检视条款 2.1、2.3"、"检查数值运算类" |
-| PR 检视 | 包含 PR 号/分支/diff | "PR #123"、"分支 feature/add"、"diff --git a/..." |
+| PR 检视 | 包含 PR 号/分支/diff/GitCode链接 | "PR #123"、"分支 feature/add"、"diff --git a/..."、"gitcode.com/cann/ops-transformer PR #3228" |
 | 全量检视 | 其他情况 | 代码片段、文件路径 |
 
 **步骤2：获取代码内容**
@@ -87,7 +87,10 @@ skills:
 - 用户提供文件路径 → 使用 `read` 工具读取文件内容
 
 **PR 检视模式**：
-- 用户提供 PR 编号 / MR编号 / 分支名 → 使用 git 命令获取 diff 代码片段
+- GitHub PR：使用 `gh pr diff <pr_number>` 获取 diff
+- GitCode PR：使用 `python3 skills/ascendc-code-review/scripts/get_gitcode_pr_diff.py --repo <repo_url> --pr <pr_number>` 获取 diff
+- Git 分支：使用 `git diff main...<branch_name>` 获取 diff
+- 用户直接提供 diff 内容 → 直接使用
 
 **全量检视模式**：
 - 用户直接提供代码片段 → 直接使用
@@ -454,12 +457,18 @@ while 存在 pending 状态的任务:
 gh pr diff <pr_number>
 ```
 
-**方式2：Git 分支对比**
+**方式2：GitCode PR 编号（推荐）**
+```bash
+# 使用 skill 提供的脚本获取 GitCode PR diff（无需 token）
+python3 skills/ascendc-code-review/scripts/get_gitcode_pr_diff.py --repo <repo_url> --pr <pr_number>
+```
+
+**方式3：Git 分支对比**
 ```bash
 git diff main...<branch_name>
 ```
 
-**方式3：直接使用 diff 内容**
+**方式4：直接使用 diff 内容**
 - 用户直接提供 diff 输出
 - 解析 `diff --git a/... b/...` 格式
 
@@ -604,10 +613,28 @@ git diff main...<branch_name>
 
 ### 示例3：PR 检视模式
 
+**GitHub PR 检视示例**：
 ```
 【阶段1】学习检视方法论 → 调用 skill
 【阶段2】识别检视模式 → PR 检视（用户输入："检视 PR #123"）
          → 获取代码 → gh pr diff 123 → 提取变更范围
+【阶段3】识别条款 → 阅读 → 识别到 13 个条款
+【阶段4】确定检视范围 → 全量条款，代码范围限制在变更部分
+【阶段5】选择流程追踪工具 → 探测可用工具 → 选择工具 → 验证可用性
+        → 创建任务清单 → 使用流程追踪工具 → 创建 13 个 pending 任务
+【阶段6】自驱动检视循环
+  第1轮: 查看进度(0/13) → 更新in_progress → 条款2.1检视(仅变更代码) → 更新completed → 查看进度(1/13)
+  ... (每轮完整执行8步骤)
+  第13轮: 查看进度(12/13) → 更新in_progress → 条款2.13检视(仅变更代码) → 更新completed → 查看进度(13/13 ✅)
+【阶段7】生成报告 → 汇总结果 → 标注"仅检视变更部分" → 写入报告
+【阶段8】确认完成 → 向用户返回完成信息
+```
+
+**GitCode PR 检视示例**：
+```
+【阶段1】学习检视方法论 → 调用 skill
+【阶段2】识别检视模式 → PR 检视（用户输入："检视 gitcode.com/cann/ops-transformer PR #3228"）
+         → 获取代码 → python3 skills/ascendc-code-review/scripts/get_gitcode_pr_diff.py --repo https://gitcode.com/cann/ops-transformer --pr 3228 → 提取变更范围
 【阶段3】识别条款 → 阅读 → 识别到 13 个条款
 【阶段4】确定检视范围 → 全量条款，代码范围限制在变更部分
 【阶段5】选择流程追踪工具 → 探测可用工具 → 选择工具 → 验证可用性
