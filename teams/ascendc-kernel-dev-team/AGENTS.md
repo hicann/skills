@@ -1,4 +1,5 @@
 ---
+name: ascendc-kernel-dev-team
 description: Ascend C 算子开发助手 CANNBot，提供算子开发全流程指导。
 mode: primary
 skills:
