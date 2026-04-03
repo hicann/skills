@@ -19,7 +19,7 @@ NO PATHS WITHOUT SOURCE CODE EVIDENCE
 
 1. tiling 文件（op_host/*_tiling*.cpp, config/*.ini）
 2. kernel 文件（op_kernel/arch35/*.h）
-3. 平台参数（核数、UB 大小）
+3. 平台参数（核数、UB 大小、npuarch）
 
 ### 文件发现
 
@@ -138,6 +138,9 @@ Agent A 输出的路径清单（不含 group 字段）需满足：
 Ascend C 算子的 kernel 执行有三类关键分支，每类都可能产生整块/尾块的路径差异。分析源码时需要识别**每类分支映射到哪个 shape 轴**——这因算子而异，需要在每个 group 的"kernel 覆盖策略"表中写清楚。
 
 ### Kernel 关键分支
+
+**芯片**：代码上会存在使用芯片名字或者npuarch的芯片分支
+- 严格使用 ascendc-npu-arch skill能力判断代码中npuarch跟芯片名字对应关系
 
 **分核**：总工作量如何分配到多个核心
 - 未开满核：totalWork < coreNum

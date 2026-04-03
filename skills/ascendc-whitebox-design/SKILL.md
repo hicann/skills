@@ -19,7 +19,13 @@ Ascend C 算子白盒测试用例生成系统。
   · high —— 全笛卡尔积 + 常见网络 shape，~1000+ 个，全量覆盖
 ```
 
-详细执行流程参考：[`references/workflow.md`](references/workflow.md)
+确认信息后先读取工作流[`references/workflow.md`](references/workflow.md), 按照工作流进行执行。
+
+### 执行约束（必须遵守）
+
+- **Step 4 闸门**：完成 Step 3（产出 `verification_report.json` 并更新 `test_design.md` 验证结论）后，**必须先停下来**，按 `workflow.md` 中模板向用户展示摘要并**等待用户明确确认**，不得在同一轮对话中自动进入 Step 5。
+- **禁止抢跑**：在用户确认之前，**不得**运行 `scripts/run.py`、不得生成或覆盖 `cases.json` / `coverage_report.json`；不得生成依赖 `cases.json` 的最终 `review_report.json` 与 `test_*.py`（除非用户明确声明跳过闸门或「一次跑完全流程」）。
+- 详细禁止项与例外见 `references/workflow.md` 中 **「Step 4 闸门（强制，防止跳过）」** 小节。
 
 ## 输入
 
@@ -36,6 +42,7 @@ Ascend C 算子白盒测试用例生成系统。
 
 > "即将为 {op_name} 生成白盒测试用例：
 > - 平台：ascend950（64 核, 240KB UB）
+> - npuarch：DAV_3510
 > - 覆盖档位：medium（Pairwise + 常见网络 shape，~100-300 个）
 > - 输出目录：{operator_name}/tests/whitebox/
 >
@@ -49,9 +56,10 @@ Ascend C 算子白盒测试用例生成系统。
 ├── param_def.json          # Step 2
 ├── test_design.md           # Step 2 + Step 3 验证结论（用户检视文档）
 ├── verification_report.json # Step 3
-├── cases.json              # Step 4
-├── review_report.json       # Step 5
-└── test_{op_name}.py        # Step 6
+├── cases.json              # Step 5（用户确认后枚举）
+├── coverage_report.json    # Step 5
+├── review_report.json       # Step 6
+└── test_{op_name}.py        # Step 7
 ```
 
 ## 资源文件
@@ -65,10 +73,11 @@ Ascend C 算子白盒测试用例生成系统。
 | `references/prompts/test-design-checker.md` | Step 3 | 验证提示词 |
 | `references/prompts/result-checker.md` | Step 5 | 审查提示词 |
 | `references/prompts/pytest-generator.md` | Step 6 | pytest 生成提示词 |
-| `scripts/run.py` | Step 4 | CLI 入口 |
+| `scripts/run.py` | Step 5（**仅用户确认 Step 4 后**） | CLI 入口 |
 
 ## 运行前提
 
 - Python 3.7+
 - 算子源码（tiling 代码 + kernel 代码，或 torch 接口）
 - 无额外 pip 依赖（仅 stdlib）
+
