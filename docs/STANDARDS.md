@@ -1,4 +1,4 @@
-# CANN Agent 开发规范
+# CANNBot Skills 开发规范
 
 ## 通用命名规范
 
