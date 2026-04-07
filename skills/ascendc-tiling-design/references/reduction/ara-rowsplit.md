@@ -10,9 +10,8 @@
 - [二、Buffer 规划](#二buffer-规划)
 - [三、Tiling 参数计算](#三tiling-参数计算)
 - [四、Kernel 实现要点](#四kernel-实现要点)
-- [五、测试用例](#五测试用例)
-- [六、常见问题](#六常见问题)
-- [七、性能优化建议](#七性能优化建议)
+- [五、常见问题](#五常见问题)
+- [六、性能优化建议](#六性能优化建议)
 
 ---
 
@@ -27,13 +26,12 @@
 | **切分方向** | 行方向（沿 R 分 chunk） |
 | **数据连续性** | 每列 R 个元素不连续（间隔 A0） |
 | **Reduce 结果** | 向量（A0 个值） |
-| **内存访问** | `GM[a1 * R * A0 + r * A0 + a0]` |
 
 ---
 
 ## 二、Buffer 规划
 
-### 2.1 FP32 场景
+### 2.1 FP32 场景（Kernel侧）
 
 ```cpp
 // Single Buffer 模式（分 chunk 处理）
@@ -48,7 +46,7 @@ pipe->InitBuffer(tmpBuf, 1, tmpBufSize);
 // 总 UB = R_chunk×a0TileBase×4 + 3×a0TileBase×4 + tmpBufSize
 ```
 
-### 2.2 tmpBufSize 计算
+### 2.2 tmpBufSize 计算（Host侧）
 
 ```cpp
 // tmpBufSize 基于 R_chunk_size × alignedCols
@@ -63,14 +61,15 @@ uint32_t tmpBufSize = ((repeats + perBlock - 1) / perBlock) * perBlock * sizeof(
 tmpBufSize = std::max(tmpBufSize, 4096u);
 ```
 
+- tileA0Len是对A0进行切分分核之后，每个核需要处理的列数。
 ---
 
 ## 三、Tiling 参数计算
 
-### 3.1 分载判定
+### 3.1 分载判定（Host侧）
 
 ```cpp
-// R_max 计算（同 ARA-全载）
+// R_max 计算（注意：与全载模式公式不同，此处为单缓冲，overhead 和除数均不同）
 constexpr uint32_t a0TileBase = 64;  // FP32
 uint32_t tmpBufSize = 4096;
 uint32_t overhead = 3 * a0TileBase * sizeof(float) + tmpBufSize;
@@ -89,7 +88,7 @@ if (R > R_max) {
 }
 ```
 
-### 3.2 A0Inner 计算（基于 R_chunk_size）
+### 3.2 A0Inner 计算（对A0进行多核切分，Host侧）
 
 ```cpp
 // Row-Split buffer 使用: R_chunk×a0TileBase×4 + 3×a0TileBase×4 + tmpBufSize
@@ -121,7 +120,7 @@ GM (A1, R, A0) → 分 R chunk 处理
     ↓
 Chunk 0: GM[0:R_chunk, 0:tileA0Len] → UB
     ↓
-[ReduceMax/ReduceSum Pattern::RA] → chunkResult_0 (tileA0Len)
+[ReduceMax/ReduceSum Pattern::Reduce::RA] → chunkResult_0 (tileA0Len)
     ↓
 [更新 globalResult] → globalResult = merge(globalResult, chunkResult_0)
     ↓
@@ -130,7 +129,7 @@ Chunk 1, 2, ... (重复)
 UB → GM (A1, A0)
 ```
 
-**为什么选择 Pattern::RA**:
+**为什么选择 Pattern::Reduce::RA**:
 
 多核切分后，每个核处理部分 `(R_chunk, A0_inner)` 的数据，在 UB 中布局为：
 ```
@@ -138,7 +137,7 @@ UB → GM (A1, A0)
 ```
 即 `(R_chunk, alignedCols)` 的 2D 矩阵。
 
-Pattern::RA 的含义：
+Pattern::Reduce::RA 的含义：
 - **R** = Reduce 维度（沿第一维归约）
 - **A** = Align 维度（保留第二维）
 
@@ -168,9 +167,10 @@ for (uint32_t chunkIdx = 0; chunkIdx < R_chunks; chunkIdx++) {
                                   static_cast<uint32_t>((A0 - tileA0Len) * sizeof(float)), 
                                   0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+    // shape will be [rCount, alignedCols] with `[rCount, tileA0Len]` valid data.
     DataCopyPad(xLocal, xGm[rStart * A0], copyParams, padParams);
     
-    // ReduceMax for this chunk (Pattern::RA)
+    // ReduceMax for this chunk (Pattern::Reduce::RA)
     uint32_t srcShape[] = {rCount, alignedCols};
     LocalTensor<float> chunkResultLocal = chunkResultBuf.Get<float>();
     ReduceMax<float, Pattern::Reduce::RA>(chunkResultLocal, xLocal, tmpLocal, srcShape, true);
@@ -180,34 +180,7 @@ for (uint32_t chunkIdx = 0; chunkIdx < R_chunks; chunkIdx++) {
 }
 
 // 输出最终结果
-DataCopy(yGm[offset], globalResultLocal, tileA0Len);
-```
-
-#### ReduceSum 分载实现
-
-```cpp
-// 初始化全局和为 0
-LocalTensor<float> globalResultLocal = globalResultBuf.Get<float>();
-Duplicate<float>(globalResultLocal, 0.0f, alignedCols);
-
-for (uint32_t chunkIdx = 0; chunkIdx < R_chunks; chunkIdx++) {
-    uint32_t rStart = chunkIdx * R_chunk_size;
-    uint32_t rCount = (chunkIdx == R_chunks - 1) ? R_last_chunk_size : R_chunk_size;
-    
-    // Load R chunk
-    DataCopyPad(xLocal, xGm[rStart * A0], copyParams, padParams);
-    
-    // ReduceSum for this chunk (Pattern::RA)
-    uint32_t srcShape[] = {rCount, alignedCols};
-    LocalTensor<float> chunkResultLocal = chunkResultBuf.Get<float>();
-    ReduceSum<float, Pattern::Reduce::RA>(chunkResultLocal, xLocal, tmpLocal, srcShape, true);
-    
-    // Update globalResult (逐元素累加)
-    Add<float>(globalResultLocal, globalResultLocal, chunkResultLocal, alignedCols);
-}
-
-// 输出最终结果
-DataCopy(yGm[offset], globalResultLocal, tileA0Len);
+DataCopyPad(yGm[offset], globalResultLocal, {1, tileA0Len * sizeof(float), 0, 0});
 ```
 
 ### 4.3 关键注意点
@@ -226,34 +199,7 @@ DataCopy(yGm[offset], globalResultLocal, tileA0Len);
 
 ---
 
-## 五、测试用例
-
-### 5.1 功能测试矩阵
-
-| ID | Shape | Axis | Dtype | 说明 |
-|----|-------|------|-------|------|
-| ARA-RS01 | (2, 500, 64) | 1 | FP32 | 触发 Row-Split |
-| ARA-RS02 | (2, 500, 128) | 1 | FP32 | 大 A0 |
-| ARA-RS03 | (2, 500, 64) | 1 | FP16 | FP16 大规模 |
-| ARA-RS04 | (4, 300, 128) | 1 | FP32 | 多核，大规模 |
-| ARA-RS05 | (2, 1000, 64) | 1 | FP32 | 超大 R |
-
-### 5.2 边界测试用例
-
-| ID | 场景 | 参数 | 预期结果 |
-|----|------|------|---------|
-| ARA-RSB01 | R=R_max+1 | R=R_max+1 | 触发 Row-Split，2 个 chunk |
-| ARA-RSB02 | R=2*R_max | R=2*R_max | 2 个完整 chunk |
-| ARA-RSB03 | 非对齐 R | R=250 | 最后一个 chunk 不完整 |
-| ARA-RSB04 | 大 R | R=1000 | 多个 chunk |
-
-### 5.3 精度要求
-
-**相对误差阈值**: < 1e-5
-
----
-
-## 六、常见问题
+## 五、常见问题
 
 | 问题 | 原因 | 解决方案 |
 |-----|------|---------|
@@ -265,7 +211,7 @@ DataCopy(yGm[offset], globalResultLocal, tileA0Len);
 
 ---
 
-## 七、性能优化建议
+## 六、性能优化建议
 
 1. **减少数据访问**: 尽量减少 GM 访问次数
 2. **chunk 大小优化**: R_chunk_size = R_max，确保每个 chunk 充分利用 UB

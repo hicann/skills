@@ -10,9 +10,8 @@
 - [二、Buffer 规划](#二buffer-规划)
 - [三、Tiling 参数计算](#三tiling-参数计算)
 - [四、Kernel 实现要点](#四kernel-实现要点)
-- [五、测试用例](#五测试用例)
-- [六、常见问题](#六常见问题)
-- [七、性能优化建议](#七性能优化建议)
+- [五、常见问题](#五常见问题)
+- [六、性能优化建议](#六性能优化建议)
 
 ---
 
@@ -26,13 +25,12 @@
 | **适用条件** | A0>1, R ≤ R_max |
 | **数据连续性** | 每列 R 个元素不连续（间隔 A0） |
 | **Reduce 结果** | 向量（A0 个值） |
-| **内存访问** | `GM[a1 * R * A0 + r * A0 + a0]` |
 
 ---
 
 ## 二、Buffer 规划
 
-### 2.1 FP32 场景
+### 2.1 FP32 场景（Kernel侧）
 
 ```cpp
 // Double Buffer 模式
@@ -45,7 +43,7 @@ pipe->InitBuffer(tmpBuf, tmpBufSize);
 // 总 UB = 2×R×a0TileBase×4 + 2×a0TileBase×4 + tmpBufSize
 ```
 
-### 2.2 tmpBufSize 计算
+### 2.2 tmpBufSize 计算（Host侧）
 
 ```cpp
 constexpr uint32_t VECTOR_REG_WIDTH = 256;
@@ -63,7 +61,7 @@ tmpBufSize = std::max(tmpBufSize, 4096u);
 
 ## 三、Tiling 参数计算
 
-### 3.1 全载阈值计算
+### 3.1 全载阈值计算（Host侧）
 
 ```cpp
 // 全载条件: 2×R×a0TileBase×4 + 2×a0TileBase×4 + tmpBufSize ≤ UB_SIZE
@@ -75,7 +73,7 @@ uint32_t R_max = (UB_SIZE - overhead) / (2 * a0TileBase * sizeof(float));
 R_max = std::min(R_max, 255u);  // API 限制 repeatTimes ≤ 255
 R_max = std::max(R_max, 1u);
 
-// 估算值: R_max ≈ 350 (FP32, a0TileBase=64)
+// 估算值: 公式计算约 375，但受 min(R_max, 255) 限制，实际 R_max = 255
 ```
 
 ### 3.2 A0Inner 计算（三约束取最小）
@@ -101,7 +99,7 @@ a0Inner = std::max(a0Inner, 1L);
 uint32_t tileA0Len = a0Inner * a0TileBase;
 ```
 
-### 3.3 多核切分参数
+### 3.3 多核切分参数（Host侧）
 
 ```cpp
 uint32_t a0Outer = (A0 + tileA0Len - 1) / tileA0Len;
@@ -119,12 +117,17 @@ if (tailCoreTiles == 0 && totalTiles > 0) tailCoreTiles = tilesPerCore;
 ### 4.1 数据流
 
 ```
-GM (A1, R, A0) → UB (R × tileA0Len)
+GM (A1, R, A0) → CopyIn → UB (R × tileA0Len)
     ↓
-[ReduceMax/ReduceSum Pattern::RA] → result (tileA0Len)
+[ReduceMax/ReduceSum Pattern::Reduce::RA] → result (tileA0Len)
     ↓
-UB (tileA0Len) → GM (A1, A0)
+UB (tileA0Len) → CopyOut → GM (A1, A0)
 ```
+
+> **全载模式的核心优势**：[R, tileA0Len] 数据完整驻留在 UB 中。
+> 如果算子需要多步计算（如先 ReduceMax 再 ReduceSum），中间结果直接复用 UB 中的数据，
+> 只需 CopyIn 一次，不需要重新从 GM 搬入数据（多轮扫描仅在分载模式下才需要，因为每次只能搬入部分数据）。
+> 注意：ReduceMax/ReduceSum 的 `isReuseSource=false`（默认值）不破坏源数据，后续步骤可以继续使用。
 
 ### 4.2 核心 API 调用
 
@@ -135,10 +138,10 @@ uint32_t alignedCols = ((tileA0Len * sizeof(float) + 31) / 32) * 32 / sizeof(flo
 // srcShape 必须使用 alignedCols
 uint32_t srcShape[] = {R, alignedCols};
 
-// ReduceMax (Pattern::RA - 沿第一维归约)
+// ReduceMax (Pattern::Reduce::RA - 沿第一维归约)
 ReduceMax<float, Pattern::Reduce::RA>(resultLocal, xLocal, tmpLocal, srcShape, true);
 
-// 或 ReduceSum (Pattern::RA - 沿第一维归约)
+// 或 ReduceSum (Pattern::Reduce::RA - 沿第一维归约)
 ReduceSum<float, Pattern::Reduce::RA>(resultLocal, xLocal, tmpLocal, srcShape, true);
 ```
 
@@ -147,7 +150,7 @@ ReduceSum<float, Pattern::Reduce::RA>(resultLocal, xLocal, tmpLocal, srcShape, t
 - `srcShape[1]` 必须使用 `alignedCols`（32字节对齐）
 - 输出是向量（tileA0Len 个值）
 
-**为什么选择 Pattern::RA**:
+**为什么选择 Pattern::Reduce::RA**:
 
 多核切分后，每个核处理部分 `(R, A0_inner)` 的数据，在 UB 中布局为：
 ```
@@ -155,13 +158,13 @@ ReduceSum<float, Pattern::Reduce::RA>(resultLocal, xLocal, tmpLocal, srcShape, t
 ```
 即 `(R, alignedCols)` 的 2D 矩阵。
 
-Pattern::RA 的含义：
+Pattern::Reduce::RA 的含义：
 - **R** = Reduce 维度（沿第一维归约）
 - **A** = Align 维度（保留第二维）
 
 对于每个 `a0` 位置（0 到 A0_inner-1），取 R 个值归约，输出 A0_inner 个结果。
 
-**注意**：不能用 Level 2 API `Reduce<T>(dst, src, tmp, count)`，因为它只能处理连续数据。
+**注意**：不能用 Level 2 API `Reduce<T>(dst, src, tmp, count)`，因为它只能处理连续数据，且只能归约-1轴。
 
 ### 4.3 数据搬运（关键！）
 
@@ -206,36 +209,7 @@ uint32_t srcShape[] = {R, alignedCols};
 
 ---
 
-## 五、测试用例
-
-### 5.1 功能测试矩阵
-
-| ID | Shape | Axis | Dtype | 说明 |
-|----|-------|------|-------|------|
-| ARA-F01 | (2, 128, 64) | 1 | FP32 | 基础 3D tensor |
-| ARA-F02 | (2, 128, 128) | 1 | FP32 | A0 较大 |
-| ARA-F03 | (2, 128, 64) | 1 | FP16 | FP16 混合精度 |
-| ARA-F04 | (2, 3, 4, 5) | 0 | FP32 | 4D tensor，axis=0 |
-| ARA-F05 | (2, 3, 4, 5, 6) | 2 | FP32 | 5D tensor，axis=2 |
-| ARA-F06 | (4, 64, 128) | 1 | FP32 | 多核场景 |
-
-### 5.2 边界测试用例
-
-| ID | 场景 | 参数 | 预期结果 |
-|----|------|------|---------|
-| ARA-B01 | R 边界 | R=R_max | 全载，精度达标 |
-| ARA-B02 | R=R_max+1 | R=R_max+1 | 触发 Row-Split |
-| ARA-B03 | A0 边界 | A0=64 | 对齐，tileA0Len=64 |
-| ARA-B04 | A0 非对齐 | A0=65 | tileA0Len=128（2 个 tile） |
-| ARA-B05 | 小 A0 | A0=8 | 小于 a0TileBase |
-
-### 5.3 精度要求
-
-**相对误差阈值**: < 1e-5
-
----
-
-## 六、常见问题
+## 五、常见问题
 
 | 问题 | 原因 | 解决方案 |
 |-----|------|---------|
@@ -247,10 +221,8 @@ uint32_t srcShape[] = {R, alignedCols};
 
 ---
 
-## 七、性能优化建议
+## 六、性能优化建议
 
-1. **Double Buffer**: 使用 depth=2 的队列
-2. **对齐处理**: 提前计算 alignedCols，减少重复计算
-3. **流水线**: CopyIn/Compute/CopyOut 并行
-4. **FP16 混合精度**: FP16 输入，FP32 计算，FP16 输出
-5. **A0Inner 优化**: 三约束取最小，确保负载均衡
+1. **Double Buffer**: 使用 depth=2 的队列，CopyIn/Compute/CopyOut 并行
+2. **FP16 混合精度**: Sum/Mean/Prod等计算归约场景下：BF16/FP16 输入，FP32 计算，BF16/FP16 输出
+3. **A0Inner 优化**: 三约束取最小，确保负载均衡

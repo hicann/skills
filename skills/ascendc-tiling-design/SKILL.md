@@ -9,44 +9,14 @@ description: Ascend C 算子 Tiling 设计指南。提供算子分类体系和 T
 
 | 类别 | 特征 | 典型算子 | 设计指南 |
 |------|------|---------|---------|
-| **Reduction 归约类** | 沿轴归约，只返回值 | ReduceSum, ReduceMax, Softmax, LayerNorm | ✅ [快速参考](references/reduction/guide.md) / [完整方法论](references/reduction/methodology.md) |
-| **Index-Tracking 索引跟踪类** | 归约+索引跟踪，返回值+位置 | ArgMax, ArgMin, TopK, Sort, Where | ✅ [快速参考](references/index-tracking/guide.md) / [ArgMax详细](references/index-tracking/argmax.md) / [TopK详细](references/index-tracking/topk.md) / [Sort详细](references/index-tracking/sort.md) / [条件查找](references/index-tracking/conditional.md) |
+| **Reduction 归约类** | 沿轴归约（含索引跟踪变体） | ReduceSum, Softmax, LayerNorm, ArgMax | ✅ [场景路由](references/reduction/patterns.md)（⚠️ 必须先读） / [算法](references/reduction/algorithms.md) |
 | Elementwise 逐元素类 | 输入输出Shape相同，逐元素独立计算 | Sin, Cos, Abs | 📋 规划中 |
-| Broadcast 广播类 | 输入Shape不同，需广播对齐 | Add, Mul, Sub | 📋 规划中 |
+| Broadcast 广播类 | 输入Shape不同，需广播对齐 | Add, Mul, Sub | ✅ [场景路由](references/broadcast/patterns.md)（⚠️ 必须先读） |
 | Conversion 数据转换类 | 改变布局/形状，合并/拆分张量 | Transpose, Concat, Split | 📋 规划中 |
 | Random 随机类 | 生成随机数，需种子管理 | RandomUniform, Dropout | 📋 规划中 |
 | MatMul 矩阵乘类 | 矩阵乘法，高计算密度，用Cube单元 | MatMul, BatchMatMul | 📋 规划中 |
 | Convolution 卷积类 | 空间卷积，滑动窗口计算 | Conv2D, DepthwiseConv | 📋 规划中 |
 | NN 神经网络类 | 神经网络专用，多种操作组合 | FlashAttention, GroupNorm | 📋 规划中 |
-
-### Index-Tracking vs Reduction 的关系
-
-**核心区别**：
-
-| 维度 | Reduction | Index-Tracking |
-|------|-----------|----------------|
-| **输出** | 只返回值 | 值 + 索引/位置 |
-| **API** | ReduceMax/Sum | ReduceMax(calIndex=true) 或 Compare+Select |
-| **Buffer** | 较少（2-3个） | 更多（5-7个，需存储索引） |
-| **设计要素** | 基础 | 相同（多核切分、UB切分、Tiling完全一致） |
-
-**重要**：Index-Tracking 算子的**设计方法论与 Reduction 完全相同**，只是需要额外处理索引。
-
----
-
-## 使用场景
-
-本技能是**知识库型技能**，提供设计参考，不定义开发流程。
-
-**典型使用方式**：
-1. `ascendc-kernel-develop-workflow` 在设计阶段（阶段二）调用本技能
-2. 开发者查阅算子分类和通用设计要素
-3. 根据算子类别查阅对应的详细设计指南（references 文件）
-
-**相关技能**：
-- `ascendc-kernel-develop-workflow` - 完整开发流程和准出条件
-
----
 
 ## 通用设计要素（所有类别必须）
 
