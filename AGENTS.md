@@ -66,7 +66,7 @@ skills/
 ├── agents/            # Agent 定义（Subagents 创建）
 │   └── *.md           # Agent 配置文件
 ├── teams/             # Agent Teams 配置（Teams 协同）
-│   └── ascendc-kernel-dev-team/  # 算子开发团队
+│   └── ops-direct-invoke/        # 算子直调开发
 └── docs/              # 项目规范文档
     └── STANDARDS.md           # 开发规范总集
  ```

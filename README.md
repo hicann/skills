@@ -21,12 +21,12 @@
 
 ```bash
 git clone https://gitcode.com/cann/skills.git
-cd skills/teams/ascendc-kernel-dev-team
+cd skills/teams/ops-direct-invoke
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
 ```
 
-详细说明见 [teams/ascendc-kernel-dev-team/quickstart.md](teams/ascendc-kernel-dev-team/quickstart.md)。
+详细说明见 [teams/ops-direct-invoke/quickstart.md](teams/ops-direct-invoke/quickstart.md)。
 
 ### 方式二：手动安装
 
@@ -57,7 +57,7 @@ skills/
 ├── skills/                      # 技能模块库
 ├── agents/                      # 子 Agent
 ├── teams/                       # 多 Agent 协同
-│   └── ascendc-kernel-dev-team/ # AsendC kernel开发流程
+│   └── ops-direct-invoke/      # 算子直调开发流程
 └── tests/                       # 自动化测试框架
 ```
 
@@ -71,7 +71,7 @@ skills/
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
 ║  ┌─────────────────────────────┐        ┌─────────────────────────────┐      ║
-║  │  ascendc-kernel-dev-team    │        │  ascendc-ops-dev-team ⬆    │      ║
+║  │  ops-direct-invoke          │        │  ascendc-ops-dev-team ⬆    │      ║
 ║  │  Kernel 直调开发流程         │        │  自定义算子开发流程           │      ║
 ║  └──────┬──────┬──────┬────────┘        └──────┬──────┬──────┬────────┘      ║
 ║         │      │      │                        │      │      │               ║

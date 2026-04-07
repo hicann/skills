@@ -204,7 +204,7 @@ skills:
 
 ## Teams 配置
 
-### 示例：ascendc-kernel-dev-team
+### 示例：ops-direct-invoke
 
 **核心理念**：Spec-driven Development（规格驱动开发）
 
@@ -214,7 +214,7 @@ skills:
 3. 验收阶段 - 精度验收 → 性能验收
 4. 上库阶段 - 代码检视 → 开发总结
 
-> 详细配置见 `teams/ascendc-kernel-dev-team/AGENTS.md`
+> 详细配置见 `teams/ops-direct-invoke/AGENTS.md`
 
 ---
 
