@@ -1,6 +1,6 @@
 # API 文档索引
 
-基于 `asc-devkit/docs/api/` 的完整 API 文档索引，共 1,232 个 API 文档。
+基于 `asc-devkit/docs/api/` 的完整 API 文档索引。
 
 ---
 

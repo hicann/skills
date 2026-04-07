@@ -150,8 +150,8 @@
 
 根据调试类型，将总结保存到以下位置：
 
-- **单算子调试**：`ops/{operator_name}/docs/precision-debug-summary.md`
-  - 例如：`ops/sinh/docs/precision-debug-summary.md`
+- **单算子调试**：`docs/{算子名}/precision-debug-summary.md`
+  - 例如：`docs/sinh/precision-debug-summary.md`
 - **全局调试**：`docs/precision-debug-summary.md`
   - 用于跨算子的通用精度问题总结
 

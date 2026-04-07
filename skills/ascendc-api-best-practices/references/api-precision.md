@@ -20,8 +20,6 @@ Cast API 使用规范和混合精度计算模式。
 |---------|-----------|------|
 | **half → float** | `CAST_NONE` | 低精度→高精度，无精度损失 |
 | **float → half** | `CAST_ROUND` | 高精度→低精度，有精度损失 |
-| **int8_t → half** | `CAST_NONE` | 整数→浮点，无精度损失 |
-| **half → int8_t** | `CAST_ROUND` | 浮点→整数，需要舍入 |
 | half → int32_t | `CAST_ROUND` / `CAST_CEIL` | 量化场景，根据需求选择 |
 | int32_t → float | `CAST_NONE` | 整数→浮点，无精度损失 |
 
@@ -125,6 +123,4 @@ __aicore__ inline void SoftmaxRowFp32(
 | 转换方向 | RoundMode | 原因 |
 |---------|-----------|------|
 | **half → float** | `CAST_NONE` | 低精度→高精度，无精度损失 |
-| **int8_t → half** | `CAST_NONE` | 整数→浮点，无精度损失 |
 | **float → half** | `CAST_ROUND` | 高精度→低精度，需要舍入 |
-| **half → int8_t** | `CAST_ROUND` | 浮点→整数，需要舍入 |
