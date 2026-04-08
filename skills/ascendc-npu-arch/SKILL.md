@@ -1,6 +1,6 @@
 ---
 name: ascendc-npu-arch
-description: Ascend NPU 架构知识库。包含架构代际划分（NpuArch/SocVersion）、芯片型号映射、arch35 特殊优化（Regbase/SIMT/FP8）。当需要查询 NPU 架构信息、芯片特性、架构条件编译时触发。
+description: Ascend NPU 架构知识查询技能。通过芯片型号映射、架构代际划分和 arch35 特性说明，帮助判断目标平台能力、特性支持与条件编译策略。当需要确认芯片型号、NpuArch/SocVersion、架构差异、特性支持或编译分支条件时使用。
 ---
 
 # Ascend NPU 架构知识

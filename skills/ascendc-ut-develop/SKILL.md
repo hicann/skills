@@ -1,6 +1,6 @@
 ---
 name: ascendc-ut-develop
-description: Ascend C 算子 UT 开发与覆盖率增强，支持 ops-math/ops-nn/ops-transformer/ops-cv。**主动触发场景**：用户提及"UT"、"单元测试"、"覆盖率"、"测试用例"、"未覆盖代码"、"测试补充"、"提升覆盖率"等关键词时自动触发。当需要生成 UT、补充测试用例、提升覆盖率、分析未覆盖代码时使用。注意：ST 测试不适用。
+description: Ascend C 算子 UT 开发与覆盖率增强技能。通过分析 op_host/op_api/op_kernel 的测试空白、生成或补充 UT 用例并定位未覆盖代码来提升覆盖率，支持 ops-math/ops-nn/ops-transformer/ops-cv。当用户提及 UT、单元测试、覆盖率、补测、未覆盖代码或需要新增/完善 UT 时使用，ST 测试不适用。
 ---
 
 # AscendC 算子 UT 开发
