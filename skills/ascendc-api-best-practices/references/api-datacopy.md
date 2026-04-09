@@ -17,18 +17,17 @@ GM ↔ UB 数据搬运的完整指南。
 
 ## 选择规则
 
-**原则：强制使用 DataCopyPad**
+**原则：优先使用 DataCopyPad**
 
 | 场景 | API | 原因 |
 |-----|-----|------|
-| **所有 GM ↔ UB 搬运** | `DataCopyPad` | 统一处理对齐/非对齐，避免边界 bug，生产环境强制使用 |
-| ~~数据量**严格 32 字节对齐**~~ | ~~`DataCopy`~~ | ⛔️ **已禁止**，见黑名单 |
+| **非对齐或不确定对齐** | `DataCopyPad` | 自动处理对齐/非对齐，避免边界 bug |
+| **数据量严格 32 字节对齐** | `DataCopy` 或 `DataCopyPad` | 确定对齐时 DataCopy 可用，DataCopyPad 更安全 |
 
 ### ⛔️ 黑名单 API（禁止在生产代码中使用）
 
 | API | 禁止原因 | 仅允许场景 |
 |-----|---------|-----------|
-| **`DataCopy` (GM ↔ UB)** | **不支持非对齐数据，容易导致隐蔽 bug，统一使用 DataCopyPad** | **无例外** |
 | `GlobalTensor::SetValue(idx, val)` | 效率极低，单元素逐个写入 | **仅调试时使用** |
 | `GlobalTensor::GetValue(idx)` | 效率极低，单元素逐个读取 | **仅调试时使用** |
 
@@ -113,7 +112,7 @@ AscendC::ReduceMax(tmpReduce, xLocal, tmpReduce, cols, false);
 ```cpp
 uint32_t padElements = paddedCols - cols;
 AscendC::DataCopyPadExtParams<float> padParams{true, 0, padElements, 0.0f};
-AscendC::DataCopyExtParams copyParams{1, cols * sizeof(float), 0, 0};
+AscendC::DataCopyExtParams copyParams{1, cols * sizeof(float), 0, 0, 0};
 AscendC::DataCopyPad(xLocal, xGm, copyParams, padParams);
 ```
 

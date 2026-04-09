@@ -171,8 +171,8 @@ __aicore__ inline void Compute()
 
 | Buffer | 类型 | 大小 | 用途 | Queue | 标准 Reduction |
 |--------|------|------|------|-------|---------------|
-| inQueueX | float | R×a0Aligned×4 | 输入数据 | TQue VECIN, depth=2 | 相同 |
-| outQueueY | int32 | a0Aligned×4 | 输出索引 | TQue VECOUT, depth=2 | 输出值（非索引） |
+| inQueueX | float | R×a0Aligned×4 | 输入数据 | TQue VECIN, InitBuffer num=2 | 相同 |
+| outQueueY | int32 | a0Aligned×4 | 输出索引 | TQue VECOUT, InitBuffer num=2 | 输出值（非索引） |
 | maxBuf | float | a0Aligned×4 | 当前最大值 | TBuf VECCALC | **新增** |
 | idxBuf | float | a0Aligned×4 | 当前索引（float 存储） | TBuf VECCALC | **新增** |
 | cmpBuf | uint8_t | max(a0Aligned/8, 32) | 比较结果 mask | TBuf VECCALC | **新增** |
@@ -180,8 +180,8 @@ __aicore__ inline void Compute()
 ### UB 计算
 
 ```
-UB_USED = 2 × (R × a0Aligned × 4)       // inQueueX (depth=2)
-        + 2 × (a0Aligned × 4)           // outQueueY (depth=2)
+UB_USED = 2 × (R × a0Aligned × 4)       // inQueueX (num=2 开启 Double Buffer)
+        + 2 × (a0Aligned × 4)           // outQueueY (num=2 开启 Double Buffer)
         + a0Aligned × 4                  // maxBuf
         + a0Aligned × 4                  // idxBuf
         + max(a0Aligned / 8, 32)         // cmpBuf（32 字节对齐）

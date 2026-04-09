@@ -53,7 +53,12 @@ description: Ascend C API 使用最佳实践。提供算术、归约、数据搬
 |-----|---------|---------|------|
 | `GlobalTensor::SetValue()` | 效率极低 | `DataCopyPad` | [api-datacopy.md](references/api-datacopy.md) |
 | `GlobalTensor::GetValue()` | 效率极低 | `DataCopyPad` | [api-datacopy.md](references/api-datacopy.md) |
-| `DataCopy(GM↔UB)` | 无法处理非对齐 | `DataCopyPad` | [api-datacopy.md](references/api-datacopy.md) |
+
+**限制使用的 API**：
+
+| API | 限制条件 | 说明 | 文档 |
+|-----|---------|------|------|
+| `DataCopy(GM↔UB)` | 仅当搬运数据**严格 32 字节对齐**时允许使用 | 非对齐场景必须使用 `DataCopyPad` | [api-datacopy.md](references/api-datacopy.md) |
 
 **仅允许调试时使用**：
 ```cpp

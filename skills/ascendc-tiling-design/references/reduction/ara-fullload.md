@@ -223,6 +223,6 @@ uint32_t srcShape[] = {R, alignedCols};
 
 ## 六、性能优化建议
 
-1. **Double Buffer**: 使用 depth=2 的队列，CopyIn/Compute/CopyOut 并行
+1. **Double Buffer**: 使用 `InitBuffer(que, 2, size)` 开启，CopyIn/Compute/CopyOut 并行
 2. **FP16 混合精度**: Sum/Mean/Prod等计算归约场景下：BF16/FP16 输入，FP32 计算，BF16/FP16 输出
 3. **A0Inner 优化**: 三约束取最小，确保负载均衡

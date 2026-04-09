@@ -61,8 +61,8 @@ Buffer B:        [MTE2] [COMP] [MTE3] [MTE2] ...
 ```cpp
 // 手动分配示例（高级）
 AscendC::TPipe pipe;
-AscendC::TQue<AscendC::TPosition::VECIN, 2> queue;
-pipe.InitBuffer(queue, 2, TILE_LENGTH * sizeof(float));
+AscendC::TQue<AscendC::TPosition::VECIN, 1> queue;  // 模板 depth=1 即可
+pipe.InitBuffer(queue, 2, TILE_LENGTH * sizeof(float));  // num=2 开启 Double Buffer
 auto xLocal = queue.AllocTensor<float>();
 ```
 

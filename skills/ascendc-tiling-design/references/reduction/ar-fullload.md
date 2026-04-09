@@ -126,7 +126,7 @@ for (uint32_t row = 0; row < rowsThisLoop; row++) {
 
 ### 4.2 流水线设计
 
-**Double Buffer 模式** (depth=2):
+**Double Buffer 模式** (`InitBuffer(que, 2, size)`):
 ```
 Tile N:   CopyIn(row0) → Compute(row0) → CopyOut(row0)
 Tile N+1:              CopyIn(row1) → Compute(row1) → CopyOut(row1)
@@ -147,5 +147,5 @@ Tile N+1:              CopyIn(row1) → Compute(row1) → CopyOut(row1)
 
 ## 六、性能/精度优化建议
 
-1. **Double Buffer**: 使用 depth=2 的队列, CopyIn/Compute/CopyOut 并行
+1. **Double Buffer**: 使用 `InitBuffer(que, 2, size)` 开启, CopyIn/Compute/CopyOut 并行
 2. **FP16 混合精度**: Sum/Mean/Prod等计算归约场景下：BF16/FP16 输入，FP32 计算，BF16/FP16 输出

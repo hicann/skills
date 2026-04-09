@@ -7,42 +7,135 @@ TBuf/TQue 选择、Double Buffer 流水线并行、批量搬运模式。
 ## 目录
 
 1. [TBuf vs TQue 选择](#tbuf-vs-tque-选择)
-2. [Double Buffer 流水线并行](#double-buffer-流水线并行)
-3. [批量搬运 + 逐行计算模式](#批量搬运--逐行计算模式)
+2. [TQue 详解](#tque-详解)
+3. [TBuf 详解](#tbuf-详解)
+4. [Double Buffer 流水线并行](#double-buffer-流水线并行)
+5. [批量搬运 + 逐行计算模式](#批量搬运--逐行计算模式)
 
 ---
 
 ## TBuf vs TQue 选择
 
-### 选择原则
+| 场景 | 推荐类型 | 说明 |
+|-----|---------|------|
+| MTE2/MTE3 搬运缓冲区 | `TQue<VECIN/VECOUT>` | 需要与 Vector 并行，需要 EnQue/DeQue |
+| 纯 Vector 计算缓冲区 | `TBuf<VECCALC>` | 不涉及 MTE 搬运，用 `Get<T>()` 获取 |
+| Double Buffer | `TQue` + `InitBuffer(que, 2, size)` | 在 InitBuffer 中设置 num=2 开启 |
 
-| 场景 | 推荐类型 | depth | 原因 |
-|-----|---------|-------|------|
-| MTE2/MTE3 搬运缓冲区 | `TQue<VECIN/VECOUT>` | 2 | 需要与 Vector 计算并行 |
-| 纯 Vector 计算缓冲区 | `TBuf<VECCALC>` | 1 | 不涉及 MTE 搬运，串行即可 |
-| 需要多 buffer 轮转 | `TQue` (depth≥2) | 2+ | Double Buffer 并行 |
-| 单 buffer 临时存储 | `TBuf` | 1 | 简单直接 |
+---
 
-### 正确用法
+## TQue 详解
+
+### 模板参数
+
+```cpp
+template <TPosition pos, int32_t depth, auto mask = 0> class TQue;
+```
+
+| 参数 | 说明 |
+|------|------|
+| `pos` | 队列逻辑位置：`VECIN`, `VECOUT`, `A1`, `A2`, `B1`, `B2`, `CO1`, `CO2` |
+| `depth` | 队列深度，表示可连续 EnQue/DeQue 的次数 |
+| `mask` | 数据格式转换（ND↔NZ）或编译期优化参数 |
+
+### depth 参数关键说明
+
+| depth 值 | 适用场景 | 说明 |
+|---------|---------|------|
+| `depth=1` | **默认推荐**，非 Tensor 原地操作 | 编译器有特殊优化，性能更好 |
+| `depth=0` | **Tensor 原地操作** | 需要设置 |
+| `depth=2` | 连续 2 次 EnQue 场景 | 与 InitBuffer 的 num 参数独立 |
+
+**注意**：`depth` 与 Double Buffer 无关。Double Buffer 由 `InitBuffer` 的 `num` 参数控制。
+
+```cpp
+// ✅ 非连续入队（普通场景）：depth=1 即可
+AscendC::TQue<AscendC::TPosition::VECIN, 1> que;
+pipe->InitBuffer(que, 1, size);
+auto tensor = que.AllocTensor<T>();
+que.EnQue(tensor);
+tensor = que.DeQue<T>();
+que.FreeTensor(tensor);
+```
+
+### Double Buffer 配置
+
+**Double Buffer 是在 `InitBuffer` 的 `num` 参数中设置，与模板参数 `depth` 无关。**
+
+| InitBuffer 参数 | 作用 | 说明 |
+|----------------|------|------|
+| `InitBuffer(que, num, size)` | `num` 控制 Double Buffer | `num=1`=单 Buffer，`num=2`=开启 Double Buffer |
+| 模板参数 `depth` | 队列深度 | 表示可连续 EnQue 的次数 |
+
+```cpp
+// ✅ 开启 Double Buffer：在 InitBuffer 中设置 num=2
+AscendC::TQue<AscendC::TPosition::VECIN, 1> que;  // 模板 depth=1 即可
+pipe->InitBuffer(que, 2, size);  // num=2 开启 Double Buffer
+
+// ✅ 关闭 Double Buffer
+AscendC::TQue<AscendC::TPosition::VECIN, 1> que;
+pipe->InitBuffer(que, 1, size);  // num=1 单 Buffer
+```
+
+### TQue Buffer 数量限制
+
+| 产品系列 | eventID 数量 | 最大 TQue 数量 |
+|---------|-------------|---------------|
+| Atlas 训练系列 | 4 | 4 |
+| Atlas 推理系列 AI Core | 8 | 8 |
+| Atlas 推理系列 Vector Core | 8 | 8 |
+| Atlas A2/A3 系列 | 8 | 8 |
+
+**注意**：
+- 不开启 Double Buffer（num=1）：最多可申请 8 个 TQue
+- 开启 Double Buffer（num=2）：每个 TQue 占用 2 个 buffer，最多只能申请 4 个 TQue
+
+```cpp
+// 开启 Double Buffer 时，最多只能申请 4 个 TQue
+pipe->InitBuffer(que0, 2, size);  // ✅
+pipe->InitBuffer(que1, 2, size);  // ✅
+pipe->InitBuffer(que2, 2, size);  // ✅
+pipe->InitBuffer(que3, 2, size);  // ✅
+pipe->InitBuffer(que4, 2, size);  // ❌ 超过限制
+```
+
+### TQue 正确用法
 
 ```cpp
 // TQue：需要队列管理（MTE 搬运相关）
-AscendC::TQue<AscendC::QuePosition::VECIN, 2> inQueueX;  // depth=2 for Double Buffer
-pipe->InitBuffer(inQueueX, 2, bufferSize);
+// 模板 depth=1 即可，Double Buffer 在 InitBuffer 的 num 参数中设置
+AscendC::TQue<AscendC::TPosition::VECIN, 1> inQueueX;
+pipe->InitBuffer(inQueueX, 2, bufferSize);  // num=2 开启 Double Buffer
 
 AscendC::LocalTensor<half> x = inQueueX.AllocTensor<half>();
-AscendC::DataCopy(x, xGm, size);
+AscendC::DataCopyPad(x, xGm, {1, size * sizeof(half), 0, 0}, {false, 0, 0, 0});
 inQueueX.EnQue(x);
 // ...
 AscendC::LocalTensor<half> xLocal = inQueueX.DeQue<half>();
 inQueueX.FreeTensor(xLocal);
+```
 
+---
+
+## TBuf 详解
+
+### 特性
+
+| 特性 | 说明 |
+|------|------|
+| 内存用途 | 只能参与计算，无法执行 EnQue/DeQue |
+| 内存分配 | 每次 InitBuffer 只分配一块内存 |
+| Tensor 释放 | 无需手动释放 |
+
+```cpp
 // TBuf：纯计算缓冲区
 AscendC::TBuf<AscendC::TPosition::VECCALC> workBuf;
 pipe->InitBuffer(workBuf, bufferSize);
 
+// ✅ 使用 Get<T>() 获取 Tensor，无需释放
 AscendC::LocalTensor<float> work = workBuf.Get<float>();
-// 直接使用，无需 EnQue/DeQue
+// ... 计算逻辑 ...
+// 无需 FreeTensor
 ```
 
 ---
@@ -73,24 +166,24 @@ Row 1:                      [MTE2][Vector][MTE3]
 ```
 Row 0: [MTE2-B0][Vector-B0][MTE3-B0]
 Row 1:          [MTE2-B1][Vector-B1][MTE3-B1]
-                 ↑ MTE2与Vector并行！
+                  ↑ MTE2与Vector并行！
 ```
 
 ### 实现原则
 
-| Buffer 类型 | 深度 | 原因 |
-|------------|------|------|
-| `TQue<VECIN>` (MTE2 搬运) | **2** | 与 Vector 并行 |
-| `TQue<VECOUT>` (MTE3 搬运) | **2** | 与 Vector 并行 |
-| `TBuf<VECCALC>` (纯计算) | **1** | 不涉及 MTE 搬运 |
+| Buffer 类型 | InitBuffer num | 说明 |
+|------------|----------------|------|
+| `TQue<VECIN>` (MTE2 搬运) | **2** | num=2 开启 Double Buffer，与 Vector 并行 |
+| `TQue<VECOUT>` (MTE3 搬运) | **2** | num=2 开启 Double Buffer，与 Vector 并行 |
+| `TBuf<VECCALC>` (纯计算) | - | TBuf 不涉及 MTE 搬运 |
 
 ### 正确用法
 
 ```cpp
-// 1. Init: depth=2 是关键
+// 1. Init: num=2 开启 Double Buffer
 pipe->InitBuffer(inQueueX,  2, tileSize * sizeof(T));
 pipe->InitBuffer(outQueueY, 2, tileSize * sizeof(T));
-pipe->InitBuffer(workBuf,   1, workSize * sizeof(T));
+pipe->InitBuffer(workBuf, workSize * sizeof(T));
 
 // 2. Process: 单循环结构，TQue 自动轮转
 for (int i = 0; i < totalTiles; i++) {
@@ -102,7 +195,7 @@ for (int i = 0; i < totalTiles; i++) {
 // 3. CopyIn
 void CopyIn(int i) {
     LocalTensor<T> x = inQueueX.AllocTensor<T>();
-    DataCopy(x, xGm[i * tileSize], tileSize);
+    DataCopyPad(x, xGm[i * tileSize], {1, (uint32_t)(tileSize * sizeof(T)), 0, 0}, {false, 0, 0, 0});
     inQueueX.EnQue(x);
 }
 
@@ -118,7 +211,7 @@ void Compute(int i) {
 // 5. CopyOut
 void CopyOut(int i) {
     LocalTensor<T> y = outQueueY.DeQue<T>();
-    DataCopy(yGm[i * tileSize], y, tileSize);
+    DataCopyPad(yGm[i * tileSize], y, {1, (uint32_t)(tileSize * sizeof(T)), 0, 0});
     outQueueY.FreeTensor(y);
 }
 ```
@@ -126,7 +219,7 @@ void CopyOut(int i) {
 ### 为什么能并行？
 
 | 操作 | 特性 |
-|-----|------|
+|------|------|
 | `DataCopy` | 异步 DMA，立即返回 |
 | `EnQue` | 非阻塞，标记就绪 |
 | `DeQue` | 阻塞，等待就绪 |
@@ -134,11 +227,11 @@ void CopyOut(int i) {
 ### 常见误区
 
 | 误区 | 正确理解 |
-|-----|---------|
-| 需要手动拆成 Ping/Pong 两套代码 | 单循环 + depth=2，TQue 自动管理 |
-| 每行数据需要2块内存 | 队列有2块 buffer 轮流使用 |
-| depth 越大越好 | depth=2 通常性价比最高 |
-| 所有 buffer 都要 depth=2 | 只有涉及 MTE 搬运的才需要 |
+|------|---------|
+| 需要手动拆成 Ping/Pong 两套代码 | 单循环 + `InitBuffer(que, 2, size)` 自动管理 |
+| depth 模板参数控制 Double Buffer | Double Buffer 由 `InitBuffer` 的 `num` 参数控制 |
+| depth 越大越好 | 模板 depth 通常设为 1，性价比最高 |
+| 所有 buffer 都要 num=2 | 只有涉及 MTE 搬运的才需要 Double Buffer |
 
 ---
 
