@@ -20,7 +20,7 @@ OP_HOST UT 包含两种测试类型：
 
 ```bash
 # 在 tiling 实现文件中查找 TilingParse<TYPE>
-# 注意：文件可能在 arch32/ 或 arch35/ 目录下，根据芯片架构确定
+# 注意：文件可能在 arch22/ 或 arch35/ 目录下，根据芯片架构确定
 find op_host -name "*_tiling*.cpp" -exec grep -l "TilingParse" {} \;
 ```
 

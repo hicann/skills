@@ -243,7 +243,7 @@ aclnnStatus aclnnXxx(
   - 精度要求
   - 输入输出 shape 规格
   - **芯片号**（从需求文档"运行环境"章节读取）
-  - **目标架构**（arch32/arch35，根据芯片号映射）
+  - **目标架构**（arch22/arch35，根据芯片号映射）
   - 性能指标（如需求中有）
 - **必须将芯片号和架构填写到详细设计文档的"1.1 基本信息"章节**
 - 如发现需求文档中的规格无法实现，必须先与用户确认，不能自行简化或修改需求
@@ -252,8 +252,8 @@ aclnnStatus aclnnXxx(
 **芯片→架构映射**：
 | 芯片号 | 架构 |
 |-------|------|
-| Ascend910B / Ascend910_93 | arch32 |
-| Ascend950DT / Ascend910PR | arch35 |
+| Ascend910B / Ascend910_93 | arch22 |
+| Ascend950DT / Ascend950PR | arch35 |
 
 ### 执行流程
 

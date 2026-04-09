@@ -77,7 +77,7 @@ print_section_header "Test 4: Chip architecture knowledge"
 
 output=$(run_claude "Ascend910B 和 Ascend950 分别对应什么架构？用 1-2 行回答。" $TIMEOUT)
 
-if echo "$output" | grep -qiE "arch32|arch35|910B.*arch32|950.*arch35|达芬奇|DaVinci|架构"; then
+if echo "$output" | grep -qiE "arch22|arch35|910B.*arch22|950.*arch35|达芬奇|DaVinci|架构"; then
     print_pass "Knows chip architecture mapping"
 else
     print_fail "Missing chip architecture knowledge"

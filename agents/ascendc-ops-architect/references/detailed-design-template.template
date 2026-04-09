@@ -9,8 +9,8 @@
 | 算子名称 | {算子名称} |
 | 算子类别 | {Reduction / Elementwise / Broadcast / Conversion / MatMul / ...} |
 | 支持数据类型 | {fp16 / fp32 / bf16 / ...} |
-| **目标芯片** | {Ascend910B / Ascend910_93 / Ascend950DT / Ascend910PR} |
-| **目标架构** | {arch32 / arch35} |
+| **目标芯片** | {Ascend910B / Ascend910_93 / Ascend950DT / Ascend950PR} |
+| **目标架构** | {arch22 / arch35} |
 
 ### 1.2 算子功能
 {描述算子的功能}
@@ -52,18 +52,18 @@ ${op_name}/
 ├── op_host/                    # Host侧实现
 │   ├── ${op_name}_def.cpp     # 算子原型注册
 │   ├── ${op_name}_infershape.cpp # Shape推导
-│   ├── arch32/                 # Ascend910B/Ascend910_93 (DAV_2201)
+│   ├── arch22/                 # Ascend910B/Ascend910_93 (DAV_2201)
 │   │   ├── ${op_name}_tiling.cpp  # Tiling实现
 │   │   ├── ${op_name}_tiling.h    # Tiling数据结构定义
-│   └── arch35/                 # Ascend950DT/Ascend910PR (DAV_3510)
+│   └── arch35/                 # Ascend950DT/Ascend950PR (DAV_3510)
 ├── op_kernel/                  # Kernel侧实现
-│   ├── ${op_name}_arch32.cpp  # Kernel入口
+│   ├── ${op_name}_arch22.cpp  # Kernel入口
 │   ├── ${op_name}_arch35.cpp  # Kernel入口
-│   ├── arch32/                 # Ascend910B/Ascend910_93 (DAV_2201)
+│   ├── arch22/                 # Ascend910B/Ascend910_93 (DAV_2201)
 │   │   ├── ${op_name}.h
 │   │   ├── ${op_name}_tiling_key.h
 │   │   └── ${op_name}_tiling_data.h
-│   └── arch35/                 # Ascend950DT/Ascend910PR (DAV_3510)
+│   └── arch35/                 # Ascend950DT/Ascend950PR (DAV_3510)
 ├── op_api/                     # ACLNN接口（可选，框架支持自动生成）
 │   ├── aclnn_${op_name}.h
 │   ├── aclnn_${op_name}.cpp

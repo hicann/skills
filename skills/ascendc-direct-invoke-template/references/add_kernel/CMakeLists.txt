@@ -48,7 +48,7 @@ find_package(ASC REQUIRED)
 
 # [CONFIG] NPU 架构配置
 # - dav-2201: Atlas A2 系列（默认）
-# - dav-3510: Atlas A3 系列
+# - dav-3510: Atlas A5 系列
 # 更多架构详见 ascendc-npu-arch skill
 # [MODIFY] 工程名 add_custom → <your_op>_coustom	 
 target_compile_options(add_custom PRIVATE

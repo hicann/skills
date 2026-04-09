@@ -42,7 +42,7 @@ echo ""
 
 run_behavior_test "ascendc-npu-arch" \
     "Ascend910B 和 Ascend950 分别对应什么架构？" \
-    "arch32|arch35|达芬奇|DaVinci|架构" \
+    "arch22|arch35|达芬奇|DaVinci|架构" \
     "$TIMEOUT"
 
 run_behavior_test "ascendc-api-best-practices" \
