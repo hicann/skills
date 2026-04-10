@@ -62,11 +62,14 @@ CANNBot 智能体生态架构（自底向上）
 ```
 skills/
 ├── skills/            # 技能模块（Skills 开发）
-│   └── ascendc-*/     # 按 domain 划分的技能
+│   ├── ascendc-*/     # Ascend C 算子开发技能
+│   └── pypto-*/       # PyPTO 算子开发技能
 ├── agents/            # Agent 定义（Subagents 创建）
-│   └── *.md           # Agent 配置文件
+│   ├── ascendc-*/     # Ascend C 算子开发 Agent
+│   └── pypto-op-*/    # PyPTO 算子开发 Agent
 ├── teams/             # Agent Teams 配置（Teams 协同）
-│   └── ops-direct-invoke/        # 算子直调开发
+│   ├── ops-direct-invoke/        # 算子直调开发
+│   ├── pypto-op-orchestrator/    # PyPTO 算子开发
 └── docs/              # 项目规范文档
     └── STANDARDS.md           # 开发规范总集
  ```
