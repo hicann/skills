@@ -146,18 +146,19 @@ if [ "$TOOL" = "opencode" ]; then
     # OpenCode: per-item symlinks for agents (whitelist filtered)
     mkdir -p "$CANNBOT_DIR/agents"
     # Pre-clean existing agent symlinks
-    for agent_dir in "$ASCEND_AGENT_ROOT/agents"/*/; do
-        [ -d "$agent_dir" ] || continue
-        name=$(basename "$agent_dir")
+    for agent_file in "$ASCEND_AGENT_ROOT/agents"/*.md; do
+        [ -f "$agent_file" ] || continue
+        name=$(basename "$agent_file")
         target="$CANNBOT_DIR/agents/$name"
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
     agent_count=0
-    for agent_dir in "$ASCEND_AGENT_ROOT/agents"/*/; do
-        [ -d "$agent_dir" ] || continue
-        name=$(basename "$agent_dir")
-        [[ "$name" != $INCLUDED_AGENT_PATTERN ]] && continue
-        ln -sfn "$(realpath "$agent_dir")" "$CANNBOT_DIR/agents/$name"
+    for agent_file in "$ASCEND_AGENT_ROOT/agents"/*.md; do
+        [ -f "$agent_file" ] || continue
+        name=$(basename "$agent_file")
+        base="${name%.md}"
+        [[ "$base" != $INCLUDED_AGENT_PATTERN ]] && continue
+        ln -sfn "$(realpath "$agent_file")" "$CANNBOT_DIR/agents/$name"
         agent_count=$((agent_count + 1))
     done
     step1_summary="${step1_summary}agents(${agent_count})"
@@ -240,17 +241,17 @@ else
     done
 
     agent_link_count=0
-    for agent_dir in "$AGENTS_SRC"/*/; do
-        [ -d "$agent_dir" ] || continue
-        name=$(basename "$agent_dir")
-        [[ "$name" != $INCLUDED_AGENT_PATTERN ]] && continue
+    for agent_file in "$AGENTS_SRC"/*.md; do
+        [ -f "$agent_file" ] || continue
+        name=$(basename "$agent_file")
+        base="${name%.md}"
+        [[ "$base" != $INCLUDED_AGENT_PATTERN ]] && continue
         target="$AGENT_DISCOVERY/$name"
-        ln -sfn "$(realpath "$agent_dir")" "$target"
+        ln -sfn "$(realpath "$agent_file")" "$target"
         agent_link_count=$((agent_link_count + 1))
     done
 
-    for link in "$AGENT_DISCOVERY"/*/; do
-        link="${link%/}"
+    for link in "$AGENT_DISCOVERY"/*.md; do
         [ -L "$link" ] && [ ! -e "$link" ] && rm "$link"
     done
 
@@ -291,8 +292,8 @@ fi
 # Collect installed agents
 AGENTS_JSON="[]"
 if [ -d "$CANNBOT_DIR/agents" ]; then
-  AGENTS_JSON=$(ls -d "$CANNBOT_DIR/agents"/*/ 2>/dev/null | while read d; do
-    basename "$d"
+  AGENTS_JSON=$(ls "$CANNBOT_DIR/agents"/*.md 2>/dev/null | while read f; do
+    basename "$f"
   done | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))" 2>/dev/null || echo "[]")
 fi
 
@@ -326,7 +327,11 @@ fi
 for sub in $HEALTH_SUBS; do
   target="$CANNBOT_DIR/$sub"
   if [ -d "$target" ]; then
-    count=$(ls -d "$target"/*/ 2>/dev/null | wc -l)
+    if [ "$sub" = "agents" ]; then
+      count=$(ls "$target"/*.md 2>/dev/null | wc -l)
+    else
+      count=$(ls -d "$target"/*/ 2>/dev/null | wc -l)
+    fi
     [ "$count" -eq 0 ] && { health_errors="${health_errors}\n  ${YELLOW}⚠${NC} $sub/ is empty"; }
   else
     health_errors="${health_errors}\n  ${RED}✗${NC} $sub/ missing"
