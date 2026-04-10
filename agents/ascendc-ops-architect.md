@@ -6,6 +6,10 @@ skills:
   - ascendc-npu-arch
   - ascendc-env-check
   - ascendc-tiling-design
+  - ascendc-docs-gen
+  - ascendc-api-best-practices
+  - ascendc-docs-search
+  - ops-precision-standard
 permission:
   external_directory: allow
 ---
@@ -53,6 +57,15 @@ Ascend C 算子架构师，负责需求分析和方案设计。
 4. **禁止使用废弃接口**
    - ❌ `BEGIN_TILING_DATA_DEF` → ✅ 标准 C++ struct
    - ❌ `TILING_KEY_IS` 宏 → ✅ 模板编程 + if constexpr
+
+5. **API 验证强制**
+   - 每个选用的 API 必须查阅 `asc-devkit/docs/api/context/{API名称}*.md` 验证
+   - 必须用通配符搜索所有变体: `ls asc-devkit/docs/api/context/ | grep -i "^{APIName}"`
+   - 同一 API 可能有多个文件（如 ReduceMax.md / ReduceMax-35.md），必须全部查阅
+   - 必须确认 API 在目标芯片平台和 dtype 上可用
+   - 必须确认参数签名与官方文档一致
+   - 未通过验证的 API 禁止写入设计方案
+   - 在设计文档的「API 验证记录」章节中记录验证状态
 
 ---
 
@@ -149,7 +162,7 @@ Ascend C 算子架构师，负责需求分析和方案设计。
 | 输入规格 | shape、dtype | `[batch, seq, hidden], float16` |
 | 输出规格 | shape、dtype | `[batch, seq, hidden], float16` |
 | 支持数据类型 | fp16/fp32/bf16/int8 | float16, float32 |
-| 精度要求 | 误差容忍度 | fp16: 双千分之一, fp32: 双万分之一 |
+| 精度要求 | 误差容忍度 | 默认使用社区标准（降低开发门槛），商用标准为可选项。从 `ops-precision-standard` 获取，根据数据类型匹配对应标准 |
 
 #### 5. ACLNN API 接口定义
 
@@ -225,9 +238,32 @@ aclnnStatus aclnnXxx(
 
 ### 需求分析输出交付物
 
-需求文档保存至：`docs/{算子名称}_REQUIREMENT_ANALYSIS.md`
+需求分析同步输出以下文档：
 
-**文档模板**：参考 {file:./references/requirement-analysis.md.template}
+| 交付物 | 保存路径 | 模板参考 |
+|--------|---------|---------|
+| 需求文档 | `ops/{operator_name}/docs/REQUIREMENTS.md` | `ascendc-docs-gen` 技能的 **requirement-analysis-template.md** |
+| aclnnAPI 接口文档 | `ops/{operator_name}/docs/aclnn{OperatorName}.md` | `ascendc-docs-gen` 技能的 **aclnn-api-doc-template.md** |
+
+### 文档生成流程
+
+```
+需求分析完成
+  |
+  +-> REQUIREMENTS.md（需求文档）
+  |     完整的需求分析内容
+  |
+  +-> aclnn{OperatorName}.md（aclnnAPI 接口文档）
+        数据来源：
+        - 产品支持情况 <- 运行环境（需求文档第2节）
+        - 功能说明 + 计算公式 <- 算子规格（需求文档第4节）
+        - 函数原型 <- ACLNN API 接口定义（需求文档第5节）
+        - 参数说明 <- ACLNN API 参数说明（需求文档第5.2节）
+        - 约束说明 <- 约束与要求（需求文档第8节）
+        - 调用示例 <- 占位，待开发阶段补充
+```
+
+> **注意**：aclnnAPI 接口文档中的「调用示例」在需求分析阶段为占位状态，待开发阶段代码完成后补充。
 
 ---
 
@@ -235,7 +271,7 @@ aclnnStatus aclnnXxx(
 
 ### 进入条件判断
 
-**必需前置输入**：需求分析文档（`{算子名称}_REQUIREMENT_ANALYSIS.md`）
+**必需前置输入**：需求分析文档（`ops/{operator_name}/docs/REQUIREMENTS.md`）
 
 **强制约束**（必须遵守）：
 - 详细设计必须严格遵循需求分析文档中的所有规格：
@@ -243,25 +279,56 @@ aclnnStatus aclnnXxx(
   - 精度要求
   - 输入输出 shape 规格
   - **芯片号**（从需求文档"运行环境"章节读取）
-  - **目标架构**（arch22/arch35，根据芯片号映射）
+  - **目标架构**（DAV_* 编译宏，如 DAV_2201/DAV_3510，根据芯片号映射）
   - 性能指标（如需求中有）
 - **必须将芯片号和架构填写到详细设计文档的"1.1 基本信息"章节**
 - 如发现需求文档中的规格无法实现，必须先与用户确认，不能自行简化或修改需求
 - 详细设计文档必须包含「需求追溯」章节，建立需求→设计的映射关系
 
 **芯片→架构映射**：
-| 芯片号 | 架构 |
-|-------|------|
-| Ascend910B / Ascend910_93 | arch22 |
-| Ascend950DT / Ascend950PR | arch35 |
+| 芯片号 | DAV_* 编译宏 |
+|-------|-------------|
+| Ascend910B / Ascend910_93 | DAV_2201 |
+| Ascend950DT / Ascend950PR | DAV_3510 |
 
 ### 执行流程
 
 ```
-前置检查 → 调研准备 → 技术方案设计 → 输出设计文档 → 等待确认
+前置检查 → 调研准备 → API 验证 → 技术方案设计 → 输出设计文档 → 等待确认
 ```
 
 ### 调研准备
+
+#### 参考资源
+
+- `ascendc-api-best-practices` 技能 - API 最佳实践和约束说明
+- `ascendc-docs-search` 技能 - 在 `asc-devkit/docs/api/context/` 目录下搜索 API 官方文档
+
+---
+
+### API 验证（强制步骤，在技术方案设计之前执行）
+
+> ⚠️ **重要**：未经验证的 API 禁止写入设计方案。如验证发现约束冲突，必须寻找替代方案。
+
+**验证流程**：
+
+1. **列出候选 API**：根据算子类型和计算步骤，列出所有可能用到的 API
+2. **通配符搜索**：对每个 API 执行 `ls asc-devkit/docs/api/context/ | grep -i "^{APIName}"`
+3. **全部查阅**：同一 API 可能有多个文件，必须全部查阅后再确定使用哪个版本
+4. **平台确认**：确认每个 API 在目标芯片架构上可用，支持所需 dtype
+5. **参数签名确认**：记录准确的参数列表、模板参数、类型约束
+6. **约束确认**：记录对齐要求、tmpBuffer 大小限制、地址重叠限制等
+7. **记录验证结果**：在设计文档的「API 验证记录」章节中记录
+
+**验证检查清单**：
+- [ ] 已用通配符搜索 API 所有变体文件
+- [ ] 已确认 API 在目标芯片平台（DAV_* 编译宏）上可用
+- [ ] 已确认 API 支持所需的数据类型（dtype）
+- [ ] 已确认参数签名与官方文档一致
+- [ ] 已确认 tmpBuffer/对齐等约束条件
+- [ ] 如 API 不可用，已确定替代方案
+
+> **提示**：常见 API 约束请查阅 `ascendc-api-best-practices` 技能文档
 
 ### 技术方案设计
 
@@ -343,12 +410,14 @@ if (TILING_KEY_IS(1)) { op.Process1(); }
 ### 方案设计输出文档
 
 **步骤**：
-1. 阅读模板了解文档结构：{file:./references/detailed-design-template.template}
+1. 阅读模板了解文档结构：参考 `ascendc-docs-gen` 技能的 **detailed-design-template.md**
 2. 按模板填写各章节内容
 
-**输出路径**：`docs/{算子名称}_DETAILED_DESIGN.md`
+**输出路径**：
+- 详细设计文档：`ops/{operator_name}/docs/DESIGN.md`
+- 迭代执行计划：`ops/{operator_name}/docs/PLAN.md`
 
-**核心必填项**：
+**详细设计核心必填项**：
 1. 概述（算子功能、数学公式）
 2. 架构设计（4 视图）
 3. 实现方案（模板划分、TilingData、API 映射、数据流、内存管理）
@@ -356,6 +425,10 @@ if (TILING_KEY_IS(1)) { op.Process1(); }
 5. 风险评估
 6. 交付件清单
 7. 迭代规划
+
+**迭代执行计划**：
+- 模板：参考 `ascendc-docs-gen` 技能的 **iteration-plan-template.md**
+- 必填：迭代一穿刺列表（单dtype默认fp16）、迭代二整合目标、迭代三全覆盖目标、穿刺结果判定
 
 ### 设计要点
 
