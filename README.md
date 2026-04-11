@@ -1,6 +1,6 @@
 # CANNBot Skills
 
-## 项目概述
+## 📢 项目概述
 
 ### 项目定位
 
@@ -13,7 +13,7 @@
 - Ascend C / PyPTO 算子开发者
 - 希望贡献 Skills/Agents 的社区贡献者
 
-## 快速开始
+## ⚡️快速开始
 
 ### 方式一：脚本安装（推荐）
 
@@ -61,7 +61,7 @@ mkdir -p .opencode && ln -s ../skills .opencode/skills && ln -s ../agents .openc
 opencode
 ```
 
-## 项目架构设计
+## 🔍 项目架构设计
 
 ### 整体架构
 
@@ -196,7 +196,7 @@ skills/
 ```
 
 
-## Skills 技能库
+## 🚀 Skills 技能库
 
 | Skill | 功能 |
 |-------|------|
@@ -226,7 +226,7 @@ skills/
 | **pypto-precision-compare** | 精度中间结果对比分析 |
 | **pypto-op-perf-tune** | 算子性能分析与自动调优 |
 
-## Agents 智能代理
+## 🚀 Agents 智能代理
 
 | Agent | 功能 |
 |-------|------|
@@ -239,16 +239,18 @@ skills/
 | **pypto-op-developer** | 算子代码实现与精度调试 |
 | **pypto-op-perf-tuner** | 性能分析与调优 |
 
-## 测试框架
+## 🛠️ 测试框架
 
 自动化测试验证 Skills 和 Agents 的正确性，确保技能模块和智能代理的行为符合预期。
 详见 [tests/README.md](tests/README.md)。
 
-## 许可证
+
+## 📝 许可证
 
 本项目遵循华为 CANN 社区许可证协议，详见 [LICENSE](LICENSE) 文件。
 
-## 免责声明
+
+## 💖 免责声明
 
 感谢您关注 CANNBot Skills 项目！我们希望这些技能和知识能帮助您更好地进行 CANN 开发。
 
@@ -257,3 +259,18 @@ skills/
 1. **关于内容质量**：由于技术更新迭代，部分内容可能无法完全适用于所有场景。如果发现问题，欢迎提 Issue 告诉我们。
 
 2. **关于使用目的**：本仓库内容处于 experimental 状态，仅供技术参考和学习使用，建议在测试环境充分验证后再用于生产场景。
+
+
+## 🤝 联系我们
+ 	 
+本项目的功能和文档正在持续更新和完善中，欢迎您关注最新版本。
+ 	 
+### 需求、问题、咨询、任务、文档
+通过GitCode[【Issues】](https://gitcode.com/cann/skills/issues)提交。
+ 	 
+### 社区互动
+通过GitCode[【讨论】](https://gitcode.com/cann/skills/discussions)参与交流。
+ 	 
+### 微信群
+![](./docs/contact-us.jpg)
+
