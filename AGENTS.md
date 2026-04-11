@@ -40,13 +40,13 @@
 CANNBot 智能体生态架构（自底向上）
 ┌─────────────────────────────────────────┐
 │        Agent Teams（应用层）              │  编排多个 Agent 协同工作
-│    teams/ 目录下的配置示例                │
+│    {领域}/teams/ 目录下的配置示例           │
 ├─────────────────────────────────────────┤
 │        Agents（角色层）                   │  定义做什么（职责范围）
-│    agents/ 目录下的 Agent 定义            │
+│    {领域}/agents/ 目录下的 Agent 定义       │
 ├─────────────────────────────────────────┤
 │        Skills（能力层）                   │  定义怎么做（具体实现）
-│    skills/ 目录下的技能模块               │
+│    {领域}/skills/ 目录下的技能模块          │
 ├─────────────────────────────────────────┤
 │        References（知识层）               │  定义如何做得更好
 │    内嵌在 Skills 中的最佳实践             │
@@ -57,22 +57,21 @@ CANNBot 智能体生态架构（自底向上）
      ↑ 效果评测横向覆盖所有层级 ↑
 ```
 
+> 注：领域指业务领域目录，如 `ops/`（算子）、`model/`（模型）等
+
 ## 项目结构
 
 ```
 skills/
-├── skills/            # 技能模块（Skills 开发）
-│   ├── ascendc-*/     # Ascend C 算子开发技能
-│   └── pypto-*/       # PyPTO 算子开发技能
-├── agents/            # Agent 定义（Subagents 创建）
-│   ├── ascendc-*/     # Ascend C 算子开发 Agent
-│   └── pypto-op-*/    # PyPTO 算子开发 Agent
-├── teams/             # Agent Teams 配置（Teams 协同）
-│   ├── ops-direct-invoke/        # 算子直调开发
-│   ├── pypto-op-orchestrator/    # PyPTO 算子开发
-└── docs/              # 项目规范文档
-    └── STANDARDS.md           # 开发规范总集
- ```
+├── ops/                   # 算子 Skills/Agents/Teams（正式版）
+│   ├── skills/           # 算子技能
+│   ├── agents/           # 算子 Agent 定义
+│   └── teams/            # 算子 Teams 配置
+├── ops-lab/              # 算子 Skills/Agents（实验/非正式版）
+├── model/                # 模型优化
+└── docs/                 # 项目规范文档
+    └── STANDARDS.md      # 开发规范总集
+```
 
 ## Skills 分类
 

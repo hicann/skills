@@ -45,7 +45,7 @@ echo ""
 print_section_header "Test: Agent Structure (A-STR-01 to A-STR-07)"
 
 for agent in $ALL_AGENTS; do
-    agent_file="$SKILLS_DIR/agents/$agent/AGENT.md"
+    agent_file=$(find_agent_file "$agent")
     
     if [ ! -f "$agent_file" ]; then
         print_skip "$agent: AGENT.md not found"
@@ -66,15 +66,15 @@ echo ""
 # ============================================
 print_section_header "Test: Link Validity (A-STR-08)"
 
-for agent_path in "$SKILLS_DIR/agents"/*/AGENT.md; do
-    if [ -f "$agent_path" ]; then
-        if check_file_links "$agent_path" "agent"; then
+while IFS=: read -r aname apath; do
+    if [ -f "$apath" ]; then
+        if check_file_links "$apath" "agent"; then
             ((link_pass++)) || true
         else
             ((link_fail++)) || true
         fi
     fi
-done
+done <<< "$(get_all_agents_with_paths)"
 
 echo ""
 

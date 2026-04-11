@@ -586,19 +586,106 @@ analyze_premature_actions() {
 # Skill & Agent Queries
 # =============================================================================
 
+# Get list of all skills with their full paths
+# Returns: skill_name:full_path per line
+get_all_skills_with_paths() {
+    local tmpfile
+    tmpfile=$(mktemp)
+    find "$SKILLS_DIR" -maxdepth 4 -path "*/skills/*/SKILL.md" 2>/dev/null > "$tmpfile" || true
+    find "$SKILLS_DIR/skills" -maxdepth 2 -name "SKILL.md" 2>/dev/null >> "$tmpfile" || true
+    
+    while IFS= read -r f; do
+        [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):$f"
+    done < "$tmpfile" | sort -u -t: -k1,1
+    
+    rm -f "$tmpfile"
+}
+
 # Get list of all skills
 get_all_skills() {
-    find "$SKILLS_DIR/skills" -maxdepth 2 -name "SKILL.md" -exec dirname {} \; 2>/dev/null | xargs -I{} basename {} | sort
+    get_all_skills_with_paths | cut -d: -f1
+}
+
+# Find skill file by name
+# Usage: find_skill_file "skill-name"
+# Returns: full path to SKILL.md
+find_skill_file() {
+    local skill_name="$1"
+    local result
+    result=$(get_all_skills_with_paths | grep "^${skill_name}:" | head -1 | cut -d: -f2-)
+    if [ -n "$result" ]; then
+        echo "$result"
+    else
+        echo "$SKILLS_DIR/skills/$skill_name/SKILL.md"
+    fi
+}
+
+# Get list of all agents with their full paths
+# Returns: agent_name:full_path per line
+get_all_agents_with_paths() {
+    local tmpfile
+    tmpfile=$(mktemp)
+    find "$SKILLS_DIR" -maxdepth 4 -path "*/agents/*/AGENT.md" 2>/dev/null > "$tmpfile" || true
+    find "$SKILLS_DIR/agents" -maxdepth 2 -name "AGENT.md" 2>/dev/null >> "$tmpfile" || true
+    
+    while IFS= read -r f; do
+        [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):$f"
+    done < "$tmpfile" | sort -u -t: -k1,1
+    
+    rm -f "$tmpfile"
 }
 
 # Get list of all agents
 get_all_agents() {
-    find "$SKILLS_DIR/agents" -maxdepth 2 -name "AGENT.md" -exec dirname {} \; 2>/dev/null | xargs -I{} basename {} | sort
+    get_all_agents_with_paths | cut -d: -f1
+}
+
+# Find agent file by name
+# Usage: find_agent_file "agent-name"
+# Returns: full path to AGENT.md
+find_agent_file() {
+    local agent_name="$1"
+    local result
+    result=$(get_all_agents_with_paths | grep "^${agent_name}:" | head -1 | cut -d: -f2-)
+    if [ -n "$result" ]; then
+        echo "$result"
+    else
+        echo "$SKILLS_DIR/agents/$agent_name/AGENT.md"
+    fi
+}
+
+# Get list of all teams with their full paths
+# Returns: team_name:full_path per line
+get_all_teams_with_paths() {
+    local tmpfile
+    tmpfile=$(mktemp)
+    find "$SKILLS_DIR" -maxdepth 4 -path "*/teams/*/AGENTS.md" 2>/dev/null > "$tmpfile" || true
+    find "$SKILLS_DIR/teams" -maxdepth 2 -name "AGENTS.md" 2>/dev/null >> "$tmpfile" || true
+    
+    while IFS= read -r f; do
+        [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):$f"
+    done < "$tmpfile" | sort -u -t: -k1,1
+    
+    rm -f "$tmpfile"
 }
 
 # Get list of all teams
 get_all_teams() {
-    find "$SKILLS_DIR/teams" -maxdepth 2 -name "AGENTS.md" -exec dirname {} \; 2>/dev/null | xargs -I{} basename {} | sort
+    get_all_teams_with_paths | cut -d: -f1
+}
+
+# Find team file by name
+# Usage: find_team_file "team-name"
+# Returns: full path to AGENTS.md
+find_team_file() {
+    local team_name="$1"
+    local result
+    result=$(get_all_teams_with_paths | grep "^${team_name}:" | head -1 | cut -d: -f2-)
+    if [ -n "$result" ]; then
+        echo "$result"
+    else
+        echo "$SKILLS_DIR/teams/$team_name/AGENTS.md"
+    fi
 }
 
 # =============================================================================
@@ -762,7 +849,8 @@ validate_agent_structure() {
     # A-STR-04: skills dependencies exist
     local skills=$(extract_agent_skills "$agent_file")
     for skill in $skills; do
-        local skill_file="$SKILLS_DIR/skills/$skill/SKILL.md"
+        local skill_file
+        skill_file=$(find_skill_file "$skill")
         if [ ! -f "$skill_file" ]; then
             errors+=("A-STR-04: Missing skill dependency: $skill")
         fi
@@ -925,7 +1013,8 @@ validate_team_structure() {
     # T-STR-05: skills dependencies exist
     local skills=$(extract_team_skills "$team_file")
     for skill in $skills; do
-        local skill_file="$SKILLS_DIR/skills/$skill/SKILL.md"
+        local skill_file
+        skill_file=$(find_skill_file "$skill")
         if [ ! -f "$skill_file" ]; then
             errors+=("T-STR-05: Missing skill dependency: $skill")
         fi
@@ -1417,8 +1506,14 @@ export -f extract_agent_skills
 export -f run_behavior_test
 export -f analyze_premature_actions
 export -f get_all_skills
+export -f get_all_skills_with_paths
+export -f find_skill_file
 export -f get_all_agents
+export -f get_all_agents_with_paths
+export -f find_agent_file
 export -f get_all_teams
+export -f get_all_teams_with_paths
+export -f find_team_file
 export -f validate_skill_structure
 export -f validate_skill_content
 export -f validate_agent_structure

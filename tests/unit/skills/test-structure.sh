@@ -45,7 +45,7 @@ echo ""
 print_section_header "Test: Skill Structure (S-STR-01 to S-STR-07)"
 
 for skill in $ALL_SKILLS; do
-    skill_file="$SKILLS_DIR/skills/$skill/SKILL.md"
+    skill_file=$(find_skill_file "$skill")
     
     if [ ! -f "$skill_file" ]; then
         print_skip "$skill: SKILL.md not found"
@@ -66,15 +66,15 @@ echo ""
 # ============================================
 print_section_header "Test: Link Validity (S-STR-08)"
 
-for skill_path in "$SKILLS_DIR/skills"/*/SKILL.md; do
-    if [ -f "$skill_path" ]; then
-        if check_file_links "$skill_path" "skill"; then
+while IFS=: read -r sname spath; do
+    if [ -f "$spath" ]; then
+        if check_file_links "$spath" "skill"; then
             ((link_pass++)) || true
         else
             ((link_fail++)) || true
         fi
     fi
-done
+done <<< "$(get_all_skills_with_paths)"
 
 echo ""
 

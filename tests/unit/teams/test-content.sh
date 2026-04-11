@@ -40,7 +40,7 @@ echo ""
 print_section_header "Test: Team Content (T-CON-01 to T-CON-05)"
 
 for team in $ALL_TEAMS; do
-    team_file="$SKILLS_DIR/teams/$team/AGENTS.md"
+    team_file=$(find_team_file "$team")
     
     if [ ! -f "$team_file" ]; then
         print_skip "$team: AGENTS.md not found"

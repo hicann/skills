@@ -39,7 +39,7 @@ echo ""
 print_section_header "Test: Skill Content (S-CON-01 to S-CON-04)"
 
 for skill in $ALL_SKILLS; do
-    skill_file="$SKILLS_DIR/skills/$skill/SKILL.md"
+    skill_file=$(find_skill_file "$skill")
     
     if [ ! -f "$skill_file" ]; then
         print_skip "$skill: SKILL.md not found"

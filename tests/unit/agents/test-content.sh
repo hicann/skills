@@ -40,7 +40,7 @@ echo ""
 print_section_header "Test: Agent Content (A-CON-01 to A-CON-05)"
 
 for agent in $ALL_AGENTS; do
-    agent_file="$SKILLS_DIR/agents/$agent/AGENT.md"
+    agent_file=$(find_agent_file "$agent")
     
     if [ ! -f "$agent_file" ]; then
         print_skip "$agent: AGENT.md not found"

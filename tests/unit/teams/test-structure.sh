@@ -45,7 +45,7 @@ echo ""
 print_section_header "Test: Team Structure (T-STR-01 to T-STR-07)"
 
 for team in $ALL_TEAMS; do
-    team_file="$SKILLS_DIR/teams/$team/AGENTS.md"
+    team_file=$(find_team_file "$team")
     
     if [ ! -f "$team_file" ]; then
         print_skip "$team: AGENTS.md not found"
@@ -66,15 +66,15 @@ echo ""
 # ============================================
 print_section_header "Test: Link Validity (T-STR-08)"
 
-for team_path in "$SKILLS_DIR/teams"/*/AGENTS.md; do
-    if [ -f "$team_path" ]; then
-        if check_file_links "$team_path" "team"; then
+while IFS=: read -r tname tpath; do
+    if [ -f "$tpath" ]; then
+        if check_file_links "$tpath" "team"; then
             ((link_pass++)) || true
         else
             ((link_fail++)) || true
         fi
     fi
-done
+done <<< "$(get_all_teams_with_paths)"
 
 echo ""
 

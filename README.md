@@ -23,23 +23,23 @@
 
 ```bash
 git clone https://gitcode.com/cann/skills.git
-cd skills/teams/ops-direct-invoke
+cd skills/ops/teams/ops-direct-invoke
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
 ```
 
-详细说明见 [teams/ops-direct-invoke/quickstart.md](teams/ops-direct-invoke/quickstart.md)。
+详细说明见 [ops/teams/ops-direct-invoke/quickstart.md](ops/teams/ops-direct-invoke/quickstart.md)。
 
 **PyPTO 算子开发**
 
 ```bash
 git clone https://gitcode.com/cann/skills.git
-cd skills/teams/pypto-op-orchestrator
+cd skills/ops/teams/pypto-op-orchestrator
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
 ```
 
-详细说明见 [teams/pypto-op-orchestrator/quickstart.md](teams/pypto-op-orchestrator/quickstart.md)。
+详细说明见 [ops/teams/pypto-op-orchestrator/quickstart.md](ops/teams/pypto-op-orchestrator/quickstart.md)。
 
 ### 方式二：手动安装
 
@@ -49,7 +49,7 @@ bash init.sh project claude     # Claude Code 用户
 git clone https://gitcode.com/cann/skills.git
 cd skills
 # OpenCode 用户
-mkdir -p .opencode && ln -s ../skills .opencode/skills && ln -s ../agents .opencode/agents
+mkdir -p .opencode && ln -s ../ops/skills .opencode/skills && ln -s ../ops/agents .opencode/agents
 # Claude 用户：将 .opencode 替换为 .claude
 ```
 
@@ -67,12 +67,15 @@ opencode
 
 ```
 skills/
-├── skills/                      # 技能模块库
-├── agents/                      # 子 Agent
-├── teams/                       # 多 Agent 协同
-│   ├── ops-direct-invoke/      # 算子直调开发流程
-│   └── pypto-op-orchestrator/  # PyPTO 算子开发场景
-└── tests/                       # 自动化测试框架
+├── ops/                    # 算子 Skills/Agents/Teams（正式版）
+│   ├── skills/             # 算子技能模块（Ascend C + PyPTO）
+│   ├── agents/             # 子 Agent
+│   └── teams/              # 多 Agent 协同
+│       ├── ops-direct-invoke/   # 算子 <<<>>> 直调开发流程
+│       └── pypto-op-orchestrator/  # PyPTO 算子开发流程
+├── ops-lab/               # 算子 Skills/Agents（实验/非正式版）
+├── model/                 # 模型优化
+└── tests/                 # 自动化测试框架
 ```
 
 ### 逻辑架构视图
@@ -198,6 +201,8 @@ skills/
 
 ## 🚀 Skills 技能库
 
+### Ascend C 算子开发
+
 | Skill | 功能 |
 |-------|------|
 | **ascendc-api-best-practices** | API 使用最佳实践、参数限制 |
@@ -217,6 +222,11 @@ skills/
 | **ops-profiling** | NPU 性能采集与分析，CSV 指标解读、瓶颈定位、优化建议 |
 | **ops-precision-standard** | 算子精度标准，按 dtype 分类提供 atol/rtol 精度比对标准 |
 | **ascendc-docs-gen** | 算子文档写作参考，支持需求分析、详细设计等多个标准模版 |
+
+### PyPTO 算子开发
+
+| Skill | 功能 |
+|-------|------|
 | **pypto-op-design** | 算子方案设计生成 |
 | **pypto-op-develop** | 算子代码实现与测试 |
 | **pypto-golden-generate** | Golden 参考实现生成 |
@@ -228,6 +238,8 @@ skills/
 
 ## 🚀 Agents 智能代理
 
+### Ascend C 算子开发
+
 | Agent | 功能 |
 |-------|------|
 | **ascendc-ops-architect** | 算子架构师，支持需求分析和方案设计两种场景 |
@@ -235,6 +247,11 @@ skills/
 | **ascendc-kernel-architect** | Kernel直调架构师，支持需求分析、API验证、方案设计 |
 | **ascendc-kernel-developer** | Kernel直调开发者，支持代码实现、编译测试、性能采集、文档编写 |
 | **ascendc-kernel-reviewer** | Kernel直调审查者，支持独立构建验证、7维度评分、精度验证 |
+
+### PyPTO 算子开发
+
+| Agent | 功能 |
+|-------|------|
 | **pypto-op-analyst** | 需求分析与方案设计 |
 | **pypto-op-developer** | 算子代码实现与精度调试 |
 | **pypto-op-perf-tuner** | 性能分析与调优 |
