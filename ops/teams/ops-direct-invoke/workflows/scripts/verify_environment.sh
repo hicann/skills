@@ -272,11 +272,16 @@ collect_env_info() {
     echo "[7/7] 检查 NPU 设备..."
     echo "────────────────────────────────────────────────────────────────"
     
+    NPU_DEVICE_COUNT=0
     if command -v npu-smi &> /dev/null; then
         if npu-smi info &> /dev/null; then
-            success "NPU 设备可用"
+            NPU_DEVICE_COUNT=$(npu-smi info -t board 2>/dev/null | grep -c "Board ID" || echo "1")
+            if [ "$NPU_DEVICE_COUNT" -le 0 ]; then
+                NPU_DEVICE_COUNT=1
+            fi
+            success "NPU 设备可用，检测到 ${NPU_DEVICE_COUNT} 张卡"
             ENV_DATA[npu_available]="true"
-            ENV_DATA[npu_device_count]="1"
+            ENV_DATA[npu_device_count]="$NPU_DEVICE_COUNT"
         else
             warning "NPU 设备不可用（可继续开发，但无法运行测试）"
             ENV_DATA[npu_available]="false"
