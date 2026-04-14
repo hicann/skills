@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
 """
 因子取值生成器
 
@@ -66,7 +74,15 @@ except ImportError:
 class FactorValueGenerator:
     """因子取值生成器"""
     
-    # SHAPE_RELATED_ATTRS = {'shape', 'dimensions'}
+    TENSOR_TYPES = {'aclTensor', 'aclTensorList'}
+    ARRAY_TYPES = {'aclIntArray', 'aclFloatArray', 'aclBoolArray', 'aclScalarList'}
+    SCALAR_TYPES = {
+        'int4_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t',
+        'uint1_t', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
+        'bool', 'float', 'float16', 'bfloat16', 'float32', 'double',
+        'char', 'string',
+    }
+    
     SHAPE_RELATED_ATTRS = {'shape'}
     
     def __init__(self):
@@ -127,7 +143,8 @@ class FactorValueGenerator:
         if attr == 'exist':
             return factors.get(f'{param_name}.exist', [True])
         elif attr == 'format':
-            return factors.get(f'{param_name}.format', ['ND'])
+            format_list = factors.get(f'{param_name}.format', [])
+            return format_list
         elif attr == 'dimensions':
             return factors.get(f'{param_name}.dimensions', [])
         elif attr == 'dtype':
@@ -137,8 +154,12 @@ class FactorValueGenerator:
         # elif attr == 'value':
         #     return factors.get(f'{param_name}.enum_values', [])
         
+        exact_key = f'{param_name}.{attr}'
+        if exact_key in factors:
+            return factors[exact_key]
+        
         for key in factors:
-            if key.startswith(f'{param_name}.{attr}'):
+            if key.startswith(f'{param_name}.{attr}_'):
                 return factors[key]
         
         return []
@@ -241,10 +262,11 @@ class FactorValueGenerator:
         """
         求解约束，返回取值范围而非单个值
         
-        Returns:
-            - List: 返回取值范围列表
-            - 单个值: 固定值（如calculate类型）
-            - None: 无法求解
+        根据参数类型分发到对应的推导方法：
+        - aclTensorList: _solve_tensor_list_derivation
+        - aclIntArray/aclFloatArray/aclBoolArray/aclScalarList: _solve_array_derivation
+        - aclScalar/18种标量类型: _solve_scalar_derivation
+        - aclTensor: 原有逻辑
         """
         constraint_type = constraint.get('type', '')
         sources = constraint.get('sources', [])
@@ -257,43 +279,18 @@ class FactorValueGenerator:
         
         if constraint_type == 'calculate':
             expression = constraint.get('expression', 'sources[0]')
-            try:
-                if expression == 'sources[0]':
-                    return source_values[0]
-                elif expression.startswith('derive_shape_from_dimensions'):
-                    dimensions = source_values[0]
-                    if isinstance(dimensions, int):
-                        # 使用 context 生成确定性随机种子
-                        hashable_context = frozenset((k, self._make_hashable(v)) for k, v in context.items())
-                        seed = hash(hashable_context) % (2**32)
-                        return generate_random_shape(dimensions, seed=seed)
-                    return None
+            param_name = target.split('.')[0]
+            param_type = self._get_param_type(param_name)
+            target_attr = target.split('.')[-1] if '.' in target else ''
             
-                # 新增：处理 derive_value_range_from_dtype
-                elif expression.startswith('derive_value_range_from_dtype'):
-                    dtype = source_values[0]
-                    param_name = target.split('.')[0]
-                    # 从 test_factors 中查找 param.value_range_{dtype}
-                    value_ranges = self.get_value_range_for_dtype(param_name, dtype)
-                    if value_ranges:
-                        return random.choice(value_ranges)
-                    return None
-                
-                # 新增：处理 derive_value_from_range
-                elif expression.startswith('derive_value_from_range'):
-                    value_range = source_values[0]
-                    param_name = target.split('.')[0]
-                    dtype_key = f'{param_name}.dtype'
-                    dtype_value = context.get(dtype_key, 'float32')
-                    
-                    if isinstance(value_range, list) and len(value_range) == 2:
-                        # 使用 context 生成确定性随机种子
-                        hashable_context = frozenset((k, self._make_hashable(v)) for k, v in context.items())
-                        seed = hash(hashable_context) % (2**32)
-                        return generate_random_value_by_dtype(dtype_value, value_range, seed=seed)
-                    return None
-                else:
-                    return eval(expression, {'sources': source_values})
+            try:
+                result = self._dispatch_derivation(
+                    expression, param_type, target_attr,
+                    source_values, context, target
+                )
+                if result is not None:
+                    return result
+                return eval(expression, {'sources': source_values})
             except:
                 return None
         
@@ -313,6 +310,119 @@ class FactorValueGenerator:
             return self._solve_broadcast_shape_range(constraint, context)
         
         return None
+    
+    def _get_param_type(self, param_name: str) -> str:
+        param_data = self.test_factors.get(param_name, {})
+        return param_data.get('type', '')
+    
+    def _dispatch_derivation(self, expression, param_type, target_attr,
+                             source_values, context, target):
+        """
+        按参数类型分发推导逻辑
+        
+        (1) aclTensorList:
+            a. derive_length_from_length_ranges: 根据 length_ranges 随机生成 length
+            b. derive_shape_list_from_length_and_dimensions: length 决定 shape_list 长度，
+               根据 dimensions 生成每个 shape
+            c. derive_value_range_from_dtype / derive_shape_from_dimensions: 同 aclTensor
+        
+        (2) aclIntArray/aclFloatArray/aclBoolArray/aclScalarList:
+            a. derive_length_from_length_ranges: 根据 length_ranges 随机生成 length
+            b. derive_array_value_from_length_and_value_range: 根据 value_range 随机生成
+               length 个值，保存在 list 中
+            c. derive_value_range_from_dtype: 同 aclTensor
+        
+        (3) 18种标量类型 + aclScalar:
+            a. derive_value_from_range: 根据 value_range 随机生成 value
+            b. derive_value_range_from_dtype: 同 aclTensor
+        """
+        hashable_context = frozenset((k, self._make_hashable(v)) for k, v in context.items())
+        seed = hash(hashable_context) % (2**32)
+        
+        # === 通用推导：shape from dimensions ===
+        if expression.startswith('derive_shape_from_dimensions'):
+            dimensions = source_values[0]
+            if isinstance(dimensions, int):
+                return generate_random_shape(dimensions, seed=seed)
+            return None
+        
+        # === 通用推导：value_range from dtype ===
+        if expression.startswith('derive_value_range_from_dtype'):
+            dtype = source_values[0]
+            param_name = target.split('.')[0]
+            value_ranges = self.get_value_range_for_dtype(param_name, dtype)
+            if value_ranges:
+                return random.choice(value_ranges)
+            return None
+        
+        # === (1) aclTensorList 专属推导 ===
+        if param_type == 'aclTensorList':
+            if expression.startswith('derive_length_from_length_ranges'):
+                return self._derive_length(source_values[0], seed)
+            
+            if expression.startswith('derive_shape_list_from_length_and_dimensions'):
+                return self._derive_shape_list(source_values[0], source_values[1], seed)
+        
+        # === (2) Array 类型专属推导 ===
+        if param_type in self.ARRAY_TYPES:
+            if expression.startswith('derive_length_from_length_ranges'):
+                return self._derive_length(source_values[0], seed)
+            
+            if expression.startswith('derive_array_value_from_length_and_value_range'):
+                return self._derive_array_value(
+                    source_values[0], source_values[1],
+                    context, target, seed
+                )
+        
+        # === (3) 标量类型 + aclScalar 专属推导 ===
+        if param_type == 'aclScalar' or param_type in self.SCALAR_TYPES:
+            if expression.startswith('derive_value_from_range'):
+                return self._derive_scalar_value(source_values[0], context, target, seed)
+        
+        return None
+    
+    def _derive_length(self, length_ranges, seed):
+        """根据 length_ranges 随机生成 length"""
+        if not isinstance(length_ranges, list) or not length_ranges:
+            return None
+        random.seed(seed)
+        if isinstance(length_ranges[0], list):
+            selected_range = random.choice(length_ranges)
+            return random.randint(int(selected_range[0]), int(selected_range[1]))
+        else:
+            return random.randint(int(length_ranges[0]), int(length_ranges[1]))
+    
+    def _derive_shape_list(self, length_val, dimensions_val, seed):
+        """
+        根据 length 和 dimensions 生成 shape_list
+        length 决定 shape_list 中包含几个 shape
+        根据 dimensions 生成每个 shape（参考 aclTensor 的 shape 生成规则）
+        """
+        if not isinstance(length_val, int) or not isinstance(dimensions_val, int):
+            return None
+        return [generate_random_shape(dimensions_val, seed=seed + i) for i in range(length_val)]
+    
+    def _derive_array_value(self, length_val, value_range_val, context, target, seed):
+        """
+        根据 value_range 随机生成 length 个数，保存在 list 中
+        适用于 aclIntArray/aclFloatArray/aclBoolArray/aclScalarList
+        """
+        if not isinstance(length_val, int):
+            return None
+        if not isinstance(value_range_val, list) or len(value_range_val) != 2:
+            return None
+        param_name = target.split('.')[0]
+        dtype_value = context.get(f'{param_name}.dtype', 'float32')
+        random.seed(seed)
+        return [generate_random_value_by_dtype(dtype_value, value_range_val) for _ in range(length_val)]
+    
+    def _derive_scalar_value(self, value_range, context, target, seed):
+        """根据 value_range 随机生成标量 value"""
+        if not isinstance(value_range, list) or len(value_range) != 2:
+            return None
+        param_name = target.split('.')[0]
+        dtype_value = context.get(f'{param_name}.dtype', 'float32')
+        return generate_random_value_by_dtype(dtype_value, value_range, seed=seed)
     
     def solve_all_constraints_for_factor(self, factor_name: str, context: Dict[str, Any]) -> Union[List[Any], Any, None]:
         """

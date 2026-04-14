@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
 """
 测试用例生成脚本
 支持 L0（单因子覆盖）和 L1（两两组合覆盖）
@@ -800,22 +808,152 @@ def get_output_filenames(report_output, case_output, level, is_batch):
     return report_name, case_name
 
 
+def _parse_tensor_length(row, param_name):
+    length_raw = row.get(f"{param_name}.length", 1)
+    try:
+        return int(float(str(length_raw))) if pd.notna(length_raw) else 1
+    except (ValueError, TypeError):
+        return 1
+
+
+def _resolve_format(fmt_raw):
+    if isinstance(fmt_raw, list):
+        return random.choice(fmt_raw) if fmt_raw else fmt_raw
+    return fmt_raw
+
+
+def _build_input_tensor(row, param_name, param_type, param_names):
+    exist_col = f"{param_name}.exist"
+    if exist_col in row.index and row[exist_col] == False:
+        return None, None
+
+    if param_type == 'aclTensor':
+        tensor = {
+            'shape': parse_list_value(row.get(f"{param_name}.shape", '[]')),
+            'range': parse_list_value(row.get(f"{param_name}.value_range", '[]')),
+            'dtype': convert_dtype_format(row.get(f"{param_name}.dtype", 'float32')),
+            'format': _resolve_format(row.get(f"{param_name}.format", 'ND')),
+            'type': 'tensor'
+        }
+        return tensor, param_names.index(param_name)
+
+    if param_type == 'aclTensorList':
+        shape_list = parse_list_value(row.get(f"{param_name}.shape_list", '[]'))
+        value_range = parse_list_value(row.get(f"{param_name}.value_range", '[]'))
+        dtype = row.get(f"{param_name}.dtype", 'float32')
+        length = _parse_tensor_length(row, param_name)
+        fmt = parse_format_value(row.get(f"{param_name}.format", 'ND'))
+        fmt = expand_format_for_tensorlist(fmt, length)
+        range_list = expand_for_tensorlist([value_range], length)
+        dtype_list = expand_for_tensorlist([convert_dtype_format(dtype)], length)
+        tensor = {
+            'shape': shape_list, 'range': range_list, 'dtype': dtype_list,
+            'format': fmt, 'type': 'tensor_list', 'length': length,
+        }
+        return tensor, param_names.index(param_name)
+
+    return None, None
+
+
+def _build_output_tensor(row, param_name, param_type):
+    if param_type == 'aclTensor':
+        return {
+            'shape': parse_list_value(row.get(f"{param_name}.shape", '[]')),
+            'dtype': convert_dtype_format(row.get(f"{param_name}.dtype", 'float32')),
+            'format': _resolve_format(row.get(f"{param_name}.format", 'ND')),
+            'type': 'tensor'
+        }
+
+    if param_type == 'aclTensorList':
+        shape_list = parse_list_value(row.get(f"{param_name}.shape_list", '[]'))
+        dtype = row.get(f"{param_name}.dtype", 'float32')
+        length = _parse_tensor_length(row, param_name)
+        fmt = parse_format_value(row.get(f"{param_name}.format", 'ND'))
+        fmt = expand_format_for_tensorlist(fmt, length)
+        dtype_list = expand_for_tensorlist([convert_dtype_format(dtype)], length)
+        return {
+            'shape': shape_list, 'dtype': dtype_list,
+            'format': fmt, 'type': 'tensor_list', 'length': length,
+        }
+
+    return None
+
+
+def _is_attr_param(io_type, param_type):
+    if io_type not in ['input', 'output']:
+        return True
+    if io_type == 'input' and param_type not in ['aclTensor', 'aclTensorList']:
+        return True
+    return False
+
+
+def _process_input_tensors(row, param_def, param_names):
+    input_tensors = []
+    input_indices = []
+    for param_name, param_info in param_def.items():
+        if param_info.get('io_type') != 'input':
+            continue
+        tensor, idx = _build_input_tensor(
+            row, param_name, param_info.get('type', ''), param_names
+        )
+        if tensor is not None:
+            input_tensors.append(tensor)
+            input_indices.append(idx)
+    return input_tensors, input_indices
+
+
+def _process_output_tensors(row, param_def):
+    output_tensors = []
+    for param_name, param_info in param_def.items():
+        if param_info.get('io_type') != 'output':
+            continue
+        tensor = _build_output_tensor(
+            row, param_name, param_info.get('type', '')
+        )
+        if tensor is not None:
+            output_tensors.append(tensor)
+    return output_tensors
+
+
+def _process_attributes(row, param_def):
+    attrs = {}
+    attr_idx = 0
+    for param_name, param_info in param_def.items():
+        param_type = param_info.get('type', '')
+        io_type = param_info.get('io_type', '')
+        if not _is_attr_param(io_type, param_type):
+            continue
+        exist_col = f"{param_name}.exist"
+        if exist_col in row.index and row[exist_col] == False:
+            continue
+        attr_prefix = '' if attr_idx == 0 else f'.{attr_idx}'
+        attrs[f'attr_name{attr_prefix}'] = param_name
+        attrs[f'attr_type{attr_prefix}'] = get_attr_type(param_type)
+        attrs[f'attr_dtype{attr_prefix}'] = get_attr_dtype(
+            param_type, row.get(f"{param_name}.dtype", '')
+        )
+        attrs[f'attr_value{attr_prefix}'] = format_attr_value(
+            row.get(f"{param_name}.value", '')
+        )
+        attr_idx += 1
+    return attrs
+
+
 def convert_to_standard_format(df, param_def, aclnn_name, case_level):
     """
     转换为标准用例格式
-    
+
     Args:
         df: 因子值 DataFrame
         param_def: 参数定义
         aclnn_name: 算子名称
         case_level: 用例级别（L0/L1）
-    
+
     Returns:
         DataFrame: 标准格式的用例表
     """
     cases = []
-    
-    # 转换参数定义格式：列表 -> 字典（以 name 为 key）
+
     if isinstance(param_def.get('parameters'), list):
         params_dict = {}
         for param in param_def['parameters']:
@@ -823,10 +961,9 @@ def convert_to_standard_format(df, param_def, aclnn_name, case_level):
             if param_name:
                 params_dict[param_name] = param
         param_def = params_dict
-    
-    # 获取参数顺序（用于确定input_tensor_index）
+
     param_names = list(param_def.keys())
-    
+
     for idx, row in df.iterrows():
         case = {
             'aclnn_name': aclnn_name,
@@ -834,107 +971,40 @@ def convert_to_standard_format(df, param_def, aclnn_name, case_level):
             'bin_dir': '',
             'genetic': '',
             'precision_mode': '1',
-            'precision_tolerance': '((0.001,0.001,999999,0.001,0),)',
+            'precision_tolerance': '((),)',
             'red_range': ''
         }
-        
-        # 处理输入Tensor
-        input_tensors = []
-        input_indices = []
-        
-        for param_name, param_info in param_def.items():
-            if param_info.get('io_type') == 'input':
-                param_type = param_info.get('type', '')
-                
-                if param_type == 'aclTensor':
-                    exist_col = f"{param_name}.exist"
-                    if exist_col in row.index and row[exist_col] == False:
-                        continue
-                    
-                    input_tensors.append({
-                        'shape': parse_list_value(row.get(f"{param_name}.shape", '[]')),
-                        'range': parse_list_value(row.get(f"{param_name}.value_range", '[]')),
-                        'dtype': row.get(f"{param_name}.dtype", 'float32'),
-                        'format': row.get(f"{param_name}.format", 'ND'),
-                        'type': 'tensor'
-                    })
-                    input_indices.append(param_names.index(param_name))
-        
+
+        input_tensors, input_indices = _process_input_tensors(row, param_def, param_names)
         if input_tensors:
             case['input_tensor_shape'] = format_list([t['shape'] for t in input_tensors])
             case['input_tensor_range'] = format_list([t['range'] for t in input_tensors])
-            case['input_tensor_dtype'] = format_quoted_list([convert_dtype_format(t['dtype']) for t in input_tensors])
+            case['input_tensor_dtype'] = format_quoted_list([t['dtype'] for t in input_tensors])
             case['input_tensor_format'] = format_quoted_list([t['format'] for t in input_tensors])
             case['input_tensor_type'] = format_quoted_list([t['type'] for t in input_tensors])
             case['input_tensor_index'] = str(input_indices)
-        
-        # 处理输出Tensor
-        output_tensors = []
-        
-        for param_name, param_info in param_def.items():
-            if param_info.get('io_type') == 'output':
-                param_type = param_info.get('type', '')
-                
-                if param_type == 'aclTensor':
-                    output_tensors.append({
-                        'shape': parse_list_value(row.get(f"{param_name}.shape", '[]')),
-                        'dtype': row.get(f"{param_name}.dtype", 'float32'),
-                        'format': row.get(f"{param_name}.format", 'ND'),
-                        'type': 'tensor'
-                    })
-        
+
+        output_tensors = _process_output_tensors(row, param_def)
         if output_tensors:
             case['output_tensor_shape'] = format_list([t['shape'] for t in output_tensors])
             case['output_tensor_range'] = ''
-            case['output_tensor_dtype'] = format_quoted_list([convert_dtype_format(t['dtype']) for t in output_tensors])
+            case['output_tensor_dtype'] = format_quoted_list([t['dtype'] for t in output_tensors])
             case['output_tensor_format'] = format_quoted_list([t['format'] for t in output_tensors])
             case['output_tensor_type'] = format_quoted_list([t['type'] for t in output_tensors])
-        
-        # 处理属性参数（非 tensor/tensorlist 的输入参数，以及既不是 input 也不是 output 的参数）
-        attr_idx = 0
-        for param_name, param_info in param_def.items():
-            param_type = param_info.get('type', '')
-            io_type = param_info.get('io_type', '')
-            
-            # 判断是否为属性：
-            # 1. io_type 不是 input/output 的参数
-            # 2. io_type 是 input 但类型不是 aclTensor/aclTensorList 的参数
-            is_attr = False
-            if io_type not in ['input', 'output']:
-                is_attr = True
-            elif io_type == 'input' and param_type not in ['aclTensor', 'aclTensorList']:
-                is_attr = True
-            
-            if is_attr:
-                exist_col = f"{param_name}.exist"
-                if exist_col in row.index and row[exist_col] == False:
-                    continue
-                
-                attr_prefix = '' if attr_idx == 0 else f'.{attr_idx}'
-                param_type = param_info.get('type', '')
-                
-                case[f'attr_name{attr_prefix}'] = param_name
-                case[f'attr_type{attr_prefix}'] = get_attr_type(param_type)
-                case[f'attr_dtype{attr_prefix}'] = get_attr_dtype(param_type, row.get(f"{param_name}.dtype", ''))
-                case[f'attr_value{attr_prefix}'] = format_attr_value(row.get(f"{param_name}.value", ''))
-                
-                attr_idx += 1
-        
+
+        case.update(_process_attributes(row, param_def))
         cases.append(case)
-    
-    # 定义固定列的顺序
+
     fixed_columns = [
-        'aclnn_name', 'case_name', 'bin_dir', 'genetic', 'precision_mode', 
+        'aclnn_name', 'case_name', 'bin_dir', 'genetic', 'precision_mode',
         'precision_tolerance', 'red_range'
     ]
-    
-    # 创建 DataFrame 并重新排列列顺序
+
     df_result = pd.DataFrame(cases)
-    
-    # 获取所有列，固定列在前，其他列按出现顺序排列
+
     other_columns = [col for col in df_result.columns if col not in fixed_columns]
     all_columns = fixed_columns + other_columns
-    
+
     return df_result[all_columns]
 
 
@@ -943,13 +1013,53 @@ def parse_list_value(value):
     if isinstance(value, str):
         try:
             return literal_eval(value)
-        except:
+        except (ValueError, SyntaxError):
             return value
     return value
 
 
+def parse_format_value(fmt_raw):
+    if isinstance(fmt_raw, list):
+        return fmt_raw
+    if not isinstance(fmt_raw, str):
+        return [str(fmt_raw)]
+    try:
+        parsed = literal_eval(fmt_raw)
+        if isinstance(parsed, list):
+            if parsed and all(isinstance(item, str) for item in parsed):
+                return parsed
+            if parsed and all(isinstance(item, list) for item in parsed):
+                return parsed
+            return [fmt_raw]
+        return [fmt_raw]
+    except (ValueError, SyntaxError):
+        return [fmt_raw]
+
+
+def expand_for_tensorlist(values, length):
+    """将值列表扩展为指定长度（用于TensorList的format/range/dtype等字段）
+    
+    对于字符串元素（如format）：['ND'] -> ['ND', 'ND', ...]
+    对于非字符串元素（如range/dtype）：[[min, max]] -> [[min, max], [min, max], ...]
+    """
+    if isinstance(values, list) and len(values) == 1 and isinstance(values[0], str):
+        return values * length
+    elif isinstance(values, list) and len(values) == 1 and isinstance(values[0], list):
+        return [values[0] for _ in range(length)]
+    elif isinstance(values, list):
+        if len(values) >= length:
+            return values[:length]
+        else:
+            return values * (length // len(values)) + values[:length % len(values)]
+    else:
+        return [values] * length
+
+
+def expand_format_for_tensorlist(fmt, length):
+    return expand_for_tensorlist(fmt, length)
+
+
 def format_list(items):
-    """格式化列表为字符串"""
     formatted = []
     for item in items:
         if isinstance(item, (list, tuple)):
@@ -960,9 +1070,15 @@ def format_list(items):
 
 
 def format_quoted_list(items):
-    """格式化带引号的列表"""
-    quoted = [f"'{item}'" for item in items]
-    return f"[{','.join(quoted)}]"
+    if not items:
+        return "[]"
+    formatted = []
+    for item in items:
+        if isinstance(item, list):
+            formatted.append(format_quoted_list(item))
+        else:
+            formatted.append(f"'{item}'")
+    return f"[{','.join(formatted)}]"
 
 
 def convert_dtype_format(dtype_str):
@@ -980,25 +1096,48 @@ def get_attr_type(param_type):
     """获取属性类型"""
     type_mapping = {
         'aclScalar': 'scalar',
+        'aclScalarList': 'scalar_list',
+        'aclIntArray': 'int_array',
+        'aclFloatArray': 'float_array',
+        'aclBoolArray': 'bool_array',
+        'int4_t': 'buildins',
         'int8_t': 'buildins',
         'int16_t': 'buildins',
         'int32_t': 'buildins',
         'int64_t': 'buildins',
+        'uint1_t': 'buildins',
         'uint8_t': 'buildins',
         'uint16_t': 'buildins',
         'uint32_t': 'buildins',
         'uint64_t': 'buildins',
         'float': 'buildins',
         'double': 'buildins',
-        'bool': 'buildins'
+        'float16': 'buildins',
+        'bfloat16': 'buildins',
+        'float32': 'buildins',
+        'bool': 'buildins',
+        'char': 'buildins',
+        'string': 'buildins',
     }
     return type_mapping.get(param_type, 'buildins')
 
 
 def get_attr_dtype(param_type, dtype_value):
     """获取属性dtype"""
+    type_dtype_map = {
+        'int4_t': 'int4', 'int8_t': 'int8', 'int16_t': 'int16',
+        'int32_t': 'int32', 'int64_t': 'int64', 'uint1_t': 'uint1',
+        'uint8_t': 'uint8', 'uint16_t': 'uint16', 'uint32_t': 'uint32',
+        'uint64_t': 'uint64', 'bool': 'bool', 'float': 'fp32',
+        'float16': 'fp16', 'bfloat16': 'bf16', 'float32': 'fp32',
+        'double': 'double', 'char': 'int8', 'string': 'string',
+    }
+    if param_type in ('aclIntArray', 'aclFloatArray', 'aclBoolArray', 'aclScalarList'):
+        return 'list'
     if param_type == 'aclScalar':
         dtype = dtype_value if dtype_value else 'float32'
+    elif param_type in type_dtype_map:
+        dtype = type_dtype_map[param_type]
     else:
         dtype = param_type
     return convert_dtype_format(dtype)

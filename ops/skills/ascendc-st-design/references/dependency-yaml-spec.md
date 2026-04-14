@@ -17,6 +17,33 @@
 
 > **核心原则：仅描述资料中显式说明的参数间依赖关系**
 
+### sources 字段使用规范
+
+**重要规则**：
+- ❌ **禁止** `sources` 定义为空列表 `[]`
+
+**错误示例**：
+```yaml
+# ❌ 错误：sources 为空但 expression 引用 sources
+- id: "SHAPE-006"
+  type: calculate
+  sources: []  # ❌ 禁止为空
+  target: "grid.shape"
+  expression: "[sources[0][0], sources[0][1], sources[0][2], 2]"  # 引用了 sources[0]
+  description: "grid.shape[3]必须为2"
+```
+
+**正确写法**：
+```yaml
+# ✅ 正确：使用自引用
+- id: "SHAPE-006"
+  type: calculate
+  sources: ["grid.shape"]  # ✅ 自引用
+  target: "grid.shape"
+  expression: "sources[0][:3] + [2]"
+  description: "grid.shape最后一维度固定为2"
+```
+
 ### 何时需要添加约束
 
 约束用于描述**参数之间的动态依赖关系**，而非静态取值范围。以下情况需要添加约束：
@@ -62,8 +89,6 @@
 
 约束ID采用 `{类型前缀}-{序号}` 格式：
 
-
-
 | 前缀 | 类型 | 示例 |
 |------|------|------|
 | `C-TYPE` | 类型约束 | `C-TYPE-001` |
@@ -85,14 +110,40 @@
 ```
 
 **属性类型**：
-| 属性 | 说明 | 示例 |
-|------|------|------|
-| `dtype` | 数据类型 | `self.dtype` |
-| `shape` | 张量形状 | `batch1.shape` |
-| `value`  | 枚举值   | `cubeMathType.value`   |
-| `format` | 数据格式 | `input.format` |
-| `exist` | 存在性 | `bias.exist` |
-| `dimensions` | 维度值 | `input.dimensions` |
+| 属性 | 说明 | 适用参数类型 | 示例 |
+|------|------|-------------|------|
+| `dtype` | 数据类型 | 所有参数类型 | `self.dtype` |
+| `shape` | 张量形状 | aclTensor, aclTensorList | `batch1.shape` |
+| `value`  | 标量值/枚举值/数组值 | 18种标量类型(枚举), aclScalar, aclIntArray等 | `axis.value`, `mode.value` |
+| `format` | 数据格式 | aclTensor, aclTensorList | `input.format` |
+| `exist` | 存在性 | 所有可选参数 | `bias.exist` |
+| `dimensions` | 维度值 | aclTensor, aclTensorList | `input.dimensions` |
+| `length_ranges` | 长度取值范围 | aclTensorList, aclIntArray, aclFloatArray, aclBoolArray, aclScalarList | `tensors.length_ranges` |
+| `length` | 列表长度（由length_ranges推导） | aclTensorList, aclIntArray, aclFloatArray, aclBoolArray, aclScalarList | `tensors.length` |
+| `shape_list` | 形状列表（由length+dimensions推导） | aclTensorList | `tensors.shape_list` |
+| `value_range` | 值域范围（由dtype推导） | aclTensor, aclTensorList, aclIntArray, aclFloatArray, aclBoolArray, aclScalarList, aclScalar, 18种标量类型 | `self.value_range` |
+
+**各参数类型的因子节点映射**：
+
+| 参数类型 | 因子节点 |
+|---------|---------|
+| aclTensor | exist, dtype, format, dimensions, shape(推导), value_range(推导) |
+| aclTensorList | exist, dtype, format, dimensions, length_ranges, length(推导), shape(推导), shape_list(推导), value_range(推导) |
+| aclIntArray / aclFloatArray / aclBoolArray | exist, dtype, length_ranges, length(推导), value_range(推导), value(推导) |
+| aclScalarList | exist, dtype, length_ranges, length(推导), value_range(推导), value(推导) |
+| aclScalar | exist, dtype, value_range(推导), value(推导) |
+| 18种标量类型（int4_t~string） | exist, dtype, value_range(推导), value(推导) |
+
+**隐式推导规则**：
+
+| 推导规则 | source | target | expression | 适用类型 |
+|---------|--------|--------|------------|---------|
+| IMPLICIT-SHAPE | {param}.dimensions | {param}.shape | derive_shape_from_dimensions | aclTensor, aclTensorList |
+| IMPLICIT-RANGE | {param}.dtype | {param}.value_range | derive_value_range_from_dtype | 所有有value_range的类型 |
+| IMPLICIT-LENGTH | {param}.length_ranges | {param}.length | derive_length_from_length_ranges | aclTensorList, aclIntArray, aclFloatArray, aclBoolArray, aclScalarList |
+| IMPLICIT-SHAPE-LIST | [{param}.length, {param}.dimensions] | {param}.shape_list | derive_shape_list_from_length_and_dimensions | aclTensorList |
+| IMPLICIT-VALUE-LIST | [{param}.length, {param}.value_range] | {param}.value | derive_array_value_from_length_and_value_range | aclIntArray, aclFloatArray, aclBoolArray, aclScalarList |
+| IMPLICIT-VALUE | {param}.value_range | {param}.value | derive_value_from_range | aclScalar, 18种标量类型(非枚举) |
 
 **io_type 类型**：
 | io_type | 说明 | 示例 |
@@ -127,16 +178,55 @@ factors:
   out.exist: {type: exist, param: out, io_type: output}
   out.dimensions: {type: dimensions, param: out, io_type: output}
 
-# 枚举类型因子节点定义
+# TensorList类型因子节点定义
+factors:
+  tensors.dtype: {type: dtype, param: tensors, io_type: input}
+  tensors.format: {type: format, param: tensors, io_type: input}
+  tensors.exist: {type: exist, param: tensors, io_type: input}
+  tensors.dimensions: {type: dimensions, param: tensors, io_type: input}
+  tensors.length_ranges: {type: length_ranges, param: tensors, io_type: input}
+  tensors.shape: {type: shape, param: tensors, io_type: input}
+  tensors.length: {type: length, param: tensors, io_type: input}
+  tensors.shape_list: {type: shape_list, param: tensors, io_type: input}
+  tensors.value_range: {type: value_range, param: tensors, io_type: input}
+
+# Array类型因子节点定义（aclIntArray/aclFloatArray/aclBoolArray）
+factors:
+  sizes.dtype: {type: dtype, param: sizes, io_type: input}
+  sizes.exist: {type: exist, param: sizes, io_type: input}
+  sizes.length_ranges: {type: length_ranges, param: sizes, io_type: input}
+  sizes.length: {type: length, param: sizes, io_type: input}
+  sizes.value_range: {type: value_range, param: sizes, io_type: input}
+  sizes.value: {type: value, param: sizes, io_type: input}
+
+# ScalarList类型因子节点定义
+factors:
+  scalars.dtype: {type: dtype, param: scalars, io_type: input}
+  scalars.exist: {type: exist, param: scalars, io_type: input}
+  scalars.length_ranges: {type: length_ranges, param: scalars, io_type: input}
+  scalars.length: {type: length, param: scalars, io_type: input}
+  scalars.value_range: {type: value_range, param: scalars, io_type: input}
+  scalars.value: {type: value, param: scalars, io_type: input}
+
+# 枚举类型因子节点定义（如int8_t枚举、string枚举）
 factors:
   cubeMathType.dtype: {type: dtype, param: cubeMathType, io_type: input}
   cubeMathType.exist: {type: exist, param: cubeMathType, io_type: input}
   cubeMathType.value: {type: value, param: cubeMathType, io_type: input}
 
-# 非枚举/tensor类型因子节点定义
+# Scalar类型因子节点定义（如aclScalar）
 factors:
   alpha.dtype: {type: dtype, param: alpha, io_type: input}
   alpha.exist: {type: exist, param: alpha, io_type: input}
+  alpha.value_range: {type: value_range, param: alpha, io_type: input}
+  alpha.value: {type: value, param: alpha, io_type: input}
+
+# 18种标量类型因子节点定义（int4_t~string，非枚举）
+factors:
+  axis.dtype: {type: dtype, param: axis, io_type: input}
+  axis.exist: {type: exist, param: axis, io_type: input}
+  axis.value_range: {type: value_range, param: axis, io_type: input}
+  axis.value: {type: value, param: axis, io_type: input}
 
 # 约束定义
 constraints:
@@ -144,7 +234,6 @@ constraints:
     type: equal
     # ... 详细配置
 ```
----
 
 ## 约束类型定义
 
@@ -152,9 +241,14 @@ constraints:
 
 **语义**：目标因子的值通过数学/逻辑计算得出。
 
+**重要规则**：
+- ✅ `sources` 必须至少包含一个因子，**禁止** `sources` 定义为空列表 `[]`
+- ✅ 支持自引用：`sources` 可以包含 `target` 自己（用于修改已生成的值）
+
 **特化场景**：
 - **等值计算**：`expression: "sources[0]"`
 - **公式计算**：`expression: "sources[0][1] * sources[1][2]"`
+- **固定维度**：`expression: "sources[0][:3] + [2]"`（自引用修改某一维度）
 
 ```yaml
 # 等值计算
@@ -172,8 +266,15 @@ constraints:
   target: "out.shape"
   expression: "[sources[0][1], sources[1][2]]"  # [M, N]
   description: "out.shape = [batch1[1], batch2[2]]"
+
+# 固定维度（自引用）
+- id: "SHAPE-006"
+  type: calculate
+  sources: ["grid.shape"]  # 自引用
+  target: "grid.shape"
+  expression: "sources[0][:3] + [2]"  # 取前3维，添加固定值 2
+  description: "grid.shape最后一维度固定为2"
 ```
----
 
 ### 3. 指定维度广播约束 (broadcast_dim)
 
@@ -499,7 +600,7 @@ factors:
   # 枚举类型参数
   cubeMathType.dtype: {type: dtype, param: cubeMathType, io_type: input}
   cubeMathType.exist: {type: exist, param: cubeMathType, io_type: input}
-  cubeMathType.enum_values: {type: enum_values, param: cubeMathType, io_type: input}
+  cubeMathType.value: {type: value, param: cubeMathType, io_type: input}
 
 constraints:
   # ========== 形状约束 ==========

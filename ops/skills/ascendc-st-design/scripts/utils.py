@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
 """
 公共工具函数模块
 
@@ -1079,6 +1087,11 @@ def generate_random_value_by_dtype(
     }
 
     if normalized == "bool":
+        if value_range is not None and len(value_range) == 2:
+            min_val, max_val = value_range[0], value_range[1]
+            if min_val == max_val:
+                return bool(min_val)
+            return random.choice([True, False])
         return random.choice([True, False])
 
     if value_range is None or len(value_range) != 2:
