@@ -5,149 +5,66 @@ description: Ascend C 算子 UT 开发与覆盖率增强技能。通过分析 op
 
 # AscendC 算子 UT 开发
 
-本技能提供 Ascend C 算子 UT 开发的完整工作流程，支持从零创建 UT 和覆盖率增强两种模式。
+## 入口参数
 
-## 核心理念
+| 参数名 | 含义 | 取值约束 | 初值推断 |
+|-------|------|---------|---------|
+| op_name | 算子名 | 采用下划线命名法 | 驼峰命名自动转换，无法推断时询问 |
+| repo_type | 仓库类型 | 枚举值["ops-math", "ops-nn", "ops-transformer", "ops-cv", "custom"] | 根据工作目录推断，无法推断时询问 |
+| soc_type | 芯片架构 | 枚举值列表["ascend310p", "ascend910b", "ascend910_93", "ascend910_95"] | 用户没有提及则默认全选 |
+| test_model | 测试模块 | 枚举值列表["opapi", "ophost", "opkernel"] | 用户没有提及则默认全选 |
 
-UT 生成遵循四步节奏：**理解 → 规划 → 实现 → 验证**。
-
-1. **自动探索信息** — 给定算子路径后，自动探索层级支持、dtype/format、编译命令
-2. **遵循 TDD 原则** — 异常用例先行，正常用例跟进
-3. **分层独立测试** — op_host、op_api、op_kernel 各层互不依赖
-4. **覆盖率目标** — UT 生成模式目标 80%+；覆盖率增强模式目标 90%+
-
-## 使用时机
-
-**适用**：算子开发完成后生成 UT、补充测试用例、提升覆盖率、验证算子正确性
-
-**不适用**：算子功能尚未实现、编译错误未解决、环境配置问题
+**格式约定**：整个 skill 里的所有文档中，入口参数使用 `${参数名}` 标记，需替换为真实值后再理解。
 
 ---
 
-## 第一步：模式选择
+## ⚠️ 强制前置步骤（**不可跳过**）
 
-> **进入主流程前，必须先判断走哪条路径。这是整个技能的核心决策点。**
+> - **这是强制步骤，必须在执行主流程前完成！**
+> - **在此步骤完成前，禁止阅读任何 references/ 目录下的文档和当前工作目录下的文件！**
+> - **子步骤必须逐一执行，不允许同时执行或跳步！**
 
-### 检测方法
+### 0.1 发送问卷确认入口参数
+
+根据"初值推断"规则，尝试获取所有入口参数的值（仅根据已有上下文简单推断，**不阅读具体代码和子目录**），然后：
+
+**立即**使用 `question` 工具，向用户确认入口参数是否正确，问卷内容使用 `assets/question.json`，在推断出的选项的 `label` 后加上 "【推荐】"，**除此之外不得有任何修改**
+
+收到用户答复后，根据变量的"含义"理解用户真实需求
+
+### 0.2 创建 TODO.md
+
+**立即**使用 `todowrite` 工具创建 Todos，内容使用 `assets/todo.json`，**不允许进行任何修改**
+
+### 0.3 创建 tmp 目录
+
+创建 `/tmp/cannbot_${op_name}/` 目录，用于存放所有中间文件：
 
 ```bash
-# 检查 tests/ut 目录下是否有测试文件
-find <repo>/<category>/<op>/tests/ut -name "test_*.cpp" 2>/dev/null | head -5
+mkdir -p /tmp/cannbot_${op_name}
 ```
 
-### 决策逻辑
-
-```
-[UT 存在性检测] tests/ut/ 目录下是否有 test_*.cpp 测试文件？
-    │
-    ├─ 是 → 【覆盖率增强模式】
-    │   │
-    │   └─ UT 已存在，跳转到"覆盖率增强流程"
-    │       目标：提升现有覆盖率至 90%+
-    │
-    └─ 否 → 【UT 生成模式】
-        │
-        └─ UT 不存在，继续"UT 生成流程"
-            目标：从零创建 UT，覆盖率 80%+
-```
-
-### 模式说明
-
-| 模式 | 触发条件 | 目标 | 流程 |
-|------|----------|------|------|
-| **覆盖率增强模式** | tests/ut/ 下存在 test_*.cpp 文件 | 覆盖率 90%+ | 跳转到 [覆盖率增强流程](#覆盖率增强流程) |
-| **UT 生成模式** | tests/ut/ 下不存在 test_*.cpp 文件 | 覆盖率 80%+ | 继续 [UT 生成完整流程](#ut-生成完整流程) |
+**重要规则**：
+- 将入口参数存储在该目录下的 `params.json` 中
+- 所有中间文件都应放在该目录下
+- 子 Agent 的临时文件也要存放在该目录下
 
 ---
 
-## UT 生成完整流程
+## 主流程
 
-**适用场景**：算子 tests/ut/ 目录下不存在 test_*.cpp 文件，需要从零创建 UT。
+### 流程执行规则
 
-**完整流程**（Phase UT-1 至 UT-6）详见 [ut-generator-workflow.md](references/ut-generator/ut-generator-workflow.md)
+用户所有可能的需求都已经被抽象到主流程中，主流程的步骤在不同的需求下会重写为不同实现，你必须**严格遵守**以下规则：
 
-### 核心步骤概览
+1. **严格顺序执行**：必须按照 Step 1 → Step 2 → Step 3 → ... 的顺序执行，不得跳过或乱序
+2. **禁止提前阅读**：**在执行到某个步骤前，绝对禁止阅读该步骤的文档！**
+3. **即时更新进度**：每完成或跳过一个子步骤，**立即**使用 `todowrite` 工具更新 TODO.md，将其标记为 `[x]`
 
-| Phase | 任务 | 输出 |
-|-------|------|------|
-| UT-1 | 信息收集与自动探索 | 层级支持、SoC、dtype/format、编译命令 |
-| UT-2 | op_host UT 编写（P0） | Tiling 测试、InferShape 测试 |
-| UT-3 | op_api UT 编写（P1） | 参数校验测试 |
-| UT-4 | op_kernel UT 编写（P2） | Kernel 计算逻辑测试 |
-| UT-5 | 覆盖率验证 | 覆盖率报告、达标状态 |
-| UT-6 | 生成最终报告 | UT 生成总结报告 |
+## 主流程链接
 
-### 详细指南
-
-- **op_host UT**：[op-host-ut-generator.md](references/ut-generator/op-host-ut-generator.md)
-- **op_api UT**：[op-api-ut-generator.md](references/ut-generator/op-api-ut-generator.md)
-- **op_kernel UT**：[op-kernel-ut-generator.md](references/ut-generator/op-kernel-ut-generator.md)
-
----
-
-## 覆盖率增强流程
-
-**适用场景**：算子 UT 代码已存在，需要提升覆盖率。
-
-**完整流程**（Phase CE-1 至 CE-6）详见 [coverage-enhancement-workflow.md](references/coverage-enhancement/coverage-enhancement-workflow.md)
-
-### 核心步骤概览
-
-| Phase | 任务 | 输出 |
-|-------|------|------|
-| CE-1 | 收集算子基本信息 | 层级、算子名、输出路径 |
-| CE-2 | 获取初始覆盖率 | 覆盖率基线报告 |
-| CE-3 | 分析与实现测例 | 新增测试用例 |
-| CE-4 | 持续迭代优化 | 覆盖率提升报告 |
-| CE-5 | 生成最终报告 | 可覆盖/无法覆盖代码清单 |
-| CE-6 | 输出进入条件清单 | 参数配置指南 |
-
-### 子智能体调用
-覆盖率增强流程通过 `Task` 工具调用子智能体执行（因迭代分析需要较大上下文空间）：
-- **基线覆盖率**：[baseline-coverage-agent.md](references/coverage-enhancement/baseline-coverage-agent.md)
-- **测试实现**：[test-implementation-agent.md](references/coverage-enhancement/test-implementation-agent.md)
-
----
-
-## Agent 使用指南
-
-### UT生成计数规则
-
-```
-尝试次数 = 0
-每层编译失败 → 查看错误日志 → 尝试修复 → 尝试次数+1
-```
-
-### 覆盖率验证规则
-
-编译产物的覆盖率可能是全局的（包含多个算子），需要先判断类型再决定是否提取：
-
-```
-1. 编译后先判断覆盖率类型：
-   - 查看覆盖率报告中的文件路径
-   - 如果包含多个算子路径 → 全局覆盖率，需提取
-   - 如果仅包含当前算子路径 → 单算子覆盖率，可直接使用
-
-2. 全局覆盖率处理（如需要）：
-   - 使用 lcov --extract 提取单算子覆盖率
-   - 详见 [coverage-extraction-guide.md](references/coverage-enhancement/coverage-extraction-guide.md)
-
-3. 验证标准：行覆盖率 >= 80% 且函数覆盖率 >= 80%（分支覆盖率 >= 80% 推荐但非必须）
-```
-
----
-
-## 参考资料
-
-### 覆盖率增强流程
-- [coverage-enhancement-workflow.md](references/coverage-enhancement/coverage-enhancement-workflow.md) - 覆盖率增强完整流程
-- [coverage-extraction-guide.md](references/coverage-enhancement/coverage-extraction-guide.md) - 覆盖率提取指南
-- [baseline-coverage-agent.md](references/coverage-enhancement/baseline-coverage-agent.md) - 基线覆盖率获取智能体
-- [test-implementation-agent.md](references/coverage-enhancement/test-implementation-agent.md) - 测试用例实现智能体
-
-### UT 生成流程
-- [ut-generator-workflow.md](references/ut-generator/ut-generator-workflow.md) - UT 生成完整流程
-- [op-api-ut-generator.md](references/ut-generator/op-api-ut-generator.md) - op_api UT详细指南
-- [op-host-ut-generator.md](references/ut-generator/op-host-ut-generator.md) - op_host UT详细指南（Tiling + InferShape）
-- [op-kernel-ut-generator.md](references/ut-generator/op-kernel-ut-generator.md) - op_kernel UT详细指南
-- [ut-summary-template.md](references/ut-generator/ut-summary-template.md) - UT生成总结模板
+[Step 1](./references/workflow/step1.md)
+[Step 2](./references/workflow/step2.md)
+[Step 3](./references/workflow/step3.md)
+[Step 4](./references/workflow/step4.md)
+[Step 5](./references/workflow/step5.md)

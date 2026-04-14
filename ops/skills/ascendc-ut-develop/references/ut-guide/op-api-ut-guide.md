@@ -7,7 +7,9 @@
 - 输入参数校验（dtype、shape、format、nullptr）
 - 输出结果正确性
 
-### 目录结构
+---
+
+## 目录结构
 
 ```
 <repo>/<category>/<op>/tests/ut/op_api/
@@ -17,9 +19,11 @@
 └── test_aclnn_<op>_inplace.cpp  # inplace变体测试（如有）
 ```
 
-### 核心组件
+---
 
-#### TensorDesc
+## 核心组件
+
+### TensorDesc
 
 ```cpp
 // 基本构造
@@ -34,7 +38,7 @@ auto tensor = TensorDesc({3, 3}, ACL_FLOAT, ACL_FORMAT_ND)
 auto tensor = TensorDesc({5, 4}, ACL_FLOAT, ACL_FORMAT_ND, {1, 5}, 0, {4, 5});
 ```
 
-#### ScalarDesc
+### ScalarDesc
 
 ```cpp
 auto alpha = ScalarDesc(1.0f);           // float
@@ -42,7 +46,7 @@ auto value = ScalarDesc(42);             // int
 auto flag = ScalarDesc(true);            // bool
 ```
 
-#### OP_API_UT 宏
+### OP_API_UT 宏
 
 ```cpp
 // 单输入单输出
@@ -55,10 +59,13 @@ auto ut = OP_API_UT(aclnnAdd, INPUT(self, other, alpha), OUTPUT(out));
 auto ut = OP_API_UT(aclnnAbs, INPUT((aclTensor*)nullptr), OUTPUT(out));
 ```
 
-### 测试用例示例
+---
+
+## 测试用例示例
+
+### 异常用例（最先编写）
 
 ```cpp
-// 异常用例（最先编写）
 TEST_F(l2_abs_test, case_anullptr_input) {
     auto out = TensorDesc({2, 2, 3}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAbs, INPUT((aclTensor*)nullptr), OUTPUT(out));
@@ -66,7 +73,18 @@ TEST_F(l2_abs_test, case_anullptr_input) {
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspace_size), ACLNN_ERR_PARAM_NULLPTR);
 }
 
-// 正常用例
+TEST_F(l2_abs_test, case_invalid_dtype) {
+    auto self = TensorDesc({3, 3, 3}, ACL_DOUBLE, ACL_FORMAT_ND);
+    auto out = TensorDesc(self);
+    auto ut = OP_API_UT(aclnnAbs, INPUT(self), OUTPUT(out));
+    uint64_t workspace_size = 0;
+    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspace_size), ACLNN_ERR_PARAM_INVALID);
+}
+```
+
+### 正常用例
+
+```cpp
 TEST_F(l2_abs_test, case_abs_for_float_type) {
     auto self = TensorDesc({3, 3, 3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
     auto out = TensorDesc(self).Precision(0.0001, 0.0001);
@@ -76,7 +94,9 @@ TEST_F(l2_abs_test, case_abs_for_float_type) {
 }
 ```
 
-### CMakeLists.txt
+---
+
+## CMakeLists.txt
 
 ```cmake
 if(UT_TEST_ALL OR OP_API_UT)
@@ -84,11 +104,32 @@ if(UT_TEST_ALL OR OP_API_UT)
 endif()
 ```
 
-### 常见返回值
+---
+
+## 常见返回值
 
 | 返回值 | 说明 |
-|--------|------|
+|-------|------|
 | `ACL_SUCCESS` | 成功 |
 | `ACLNN_ERR_PARAM_NULLPTR` | 参数为空指针 |
 | `ACLNN_ERR_PARAM_INVALID` | 参数无效 |
 
+---
+
+## 编译命令
+
+```bash
+# 编译 op_api UT
+bash build.sh -u --opapi --ops='<op_name>' --soc='<soc_version>'
+
+# 编译并生成覆盖率
+bash build.sh -u --opapi --ops='<op_name>' --soc='<soc_version>' --cov
+```
+
+---
+
+## 测试用例编写顺序（TDD）
+
+1. **异常用例**：nullptr 测试、无效 dtype 测试、shape 不匹配测试、超过 8 维测试
+2. **正常用例**：所有支持的 dtype、所有支持的 format
+3. **边界用例**：空 tensor、0 维 tensor

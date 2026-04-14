@@ -1,8 +1,10 @@
-# 测试用例实现智能体
+# 测试用例实现指南
 
 ## 任务描述
 
 为未覆盖的代码分支设计并实现具体的测试用例。
+
+---
 
 ## 输入参数
 
@@ -14,6 +16,8 @@
 | existing_tests | 已有测试用例列表 |
 | soc_version | SOC版本列表 |
 | output_dir | 输出目录 |
+
+---
 
 ## 执行步骤
 
@@ -55,21 +59,13 @@ TEST_F({OperatorName}Test, TestScenario_{description}) {
 
     // 5. 验证结果
     EXPECT_EQ(output.shape(), expected_shape);
-    // 或 EXPECT_NEAR(...) 用于浮点数比较
 }
 ```
 
-### 3. 实现测试用例
-
-**关键要求**：
-- 测试用例必须可编译
-- 测试用例必须通过（无 `[  FAILED  ]` 标识）
-- 遵循项目的命名和代码规范
-
-**常见进入条件及参数设置**：
+### 3. 常见进入条件及参数设置
 
 | 条件类型 | 示例 | 参数设置 |
-|----------|------|----------|
+|---------|------|---------|
 | 数据类型分支 | if (dtype == INT8) | dtype=INT8 |
 | 形状条件 | if (M >= 16 && K >= 64) | M=16, K=64 |
 | 特殊参数 | if (hasQuantScale) | 提供quantScale参数 |
@@ -89,7 +85,9 @@ cd {PROJECT_DIR} && bash build.sh -u --ophost --ops='{operator_name}' --soc='{so
 3. 对比覆盖率变化
 4. 更新覆盖率报告
 
-### 5. 处理无法覆盖的代码
+---
+
+## 处理无法覆盖的代码
 
 如果某些代码确实无法覆盖，分析原因：
 
@@ -98,6 +96,8 @@ cd {PROJECT_DIR} && bash build.sh -u --ophost --ops='{operator_name}' --soc='{so
 | 死代码 | 条件永远为真/假 | useMmOutputAsX1Input硬编码为true |
 | 不参与UT | fallback实现 | fallback.cpp不在ophost测试范围 |
 | 条件不可能满足 | 参数组合冲突 | 需要同时满足A和B，但A和B互斥 |
+
+---
 
 ## 输出结果
 
@@ -125,6 +125,8 @@ cd {PROJECT_DIR} && bash build.sh -u --ophost --ops='{operator_name}' --soc='{so
 |-----------|------|------|
 | xxx.cpp:789 | 死代码 | ... |
 ```
+
+---
 
 ## 注意事项
 

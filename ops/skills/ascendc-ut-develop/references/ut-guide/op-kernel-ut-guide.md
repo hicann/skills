@@ -6,7 +6,7 @@ OP_KERNEL UT 测试 Kernel 计算逻辑，分两种类型：
 - **AscendC Kernel**：AI Core 上的 Kernel，使用 CPU 模拟执行（tikicpulib）
 - **AICPU Kernel**：AICPU 上的 Kernel
 
-> **注意**：`op_kernel/`（AscendC Kernel）和 `op_kernel_aicpu/`（AICPU Kernel）是互斥的，一个算子只会存在其中一种，不会同时存在。
+> **注意**：`op_kernel/`（AscendC Kernel）和 `op_kernel_aicpu/`（AICPU Kernel）是互斥的，一个算子只会存在其中一种。
 
 ---
 
@@ -60,7 +60,7 @@ AscendC::GmFree((void*)tiling);
 ### 两种Tiling参数获取模式
 
 | 模式 | 适用场景 | 说明 |
-|------|----------|------|
+|------|---------|------|
 | 手动设置 | Tiling参数简单、固定 | 手动构造TilingData结构体 |
 | 自动获取 | Tiling参数复杂（推荐） | 使用ExecuteTiling从Tiling实现获取 |
 
@@ -68,23 +68,18 @@ AscendC::GmFree((void*)tiling);
 
 ```cpp
 TEST_F(add_lora_test, test_add_lora_0) {
-    // 分配内存
     uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputSize);
     uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputSize);
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16781184);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(AddLoraTilingData));
 
-    // 手动设置Tiling参数
     AddLoraTilingData* tilingData = reinterpret_cast<AddLoraTilingData*>(tiling);
     tilingData->usedCoreNum = 20;
     tilingData->batch = 1;
-    // ...
 
-    // 执行
     ICPU_SET_TILING_KEY(100001);
     ICPU_RUN_KF(add_lora, 20, x, y, workspace, tilingData);
 
-    // 释放
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)y);
     AscendC::GmFree((void*)workspace);
@@ -180,10 +175,24 @@ TEST_F(TEST_ADD_UT, FLOAT_TENSOR_ADD_TENSOR_SUCC) {
 }
 ```
 
-### 常见问题速查
+---
+
+## 常见问题
 
 | 问题 | 解决方案 |
-|------|----------|
+|------|---------|
 | `cannot find -lpem_davinci` | 算子不支持op_kernel，删除op_kernel UT目录 |
 | 内存访问错误 | 使用32字节对齐：`CeilAlign(size, 32)` |
 | KernelMode需要设置 | Vector API需要：`AscendC::SetKernelMode(KernelMode::AIV_MODE)` |
+
+---
+
+## 编译命令
+
+```bash
+# 编译 op_kernel UT
+bash build.sh -u --opkernel --ops='<op_name>' --soc='<soc_version>'
+
+# 编译并生成覆盖率
+bash build.sh -u --opkernel --ops='<op_name>' --soc='<soc_version>' --cov
+```
