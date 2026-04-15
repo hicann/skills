@@ -84,15 +84,54 @@ json_escape() {
 
 # 收集环境信息
 collect_env_info() {
+    # --- 自动检测/纠正 ASCEND_HOME_PATH ---
+    detect_ascend_home() {
+        # 优先级 1: 环境变量已设置且目录存在 → 直接使用
+        if [ -n "$ASCEND_HOME_PATH" ] && [ -d "$ASCEND_HOME_PATH" ]; then
+            return
+        fi
+
+        # 优先级 2: 环境变量已设置但目录不存在 → 尝试纠正
+        if [ -n "$ASCEND_HOME_PATH" ]; then
+            echo "  ⚠ ASCEND_HOME_PATH=$ASCEND_HOME_PATH 目录不存在，尝试自动纠正..."
+            local base_parent
+            base_parent=$(dirname "$ASCEND_HOME_PATH")
+            if [ -d "$base_parent" ]; then
+                local corrected
+                corrected=$(ls -d "${base_parent}"/cann* 2>/dev/null | head -1)
+                if [ -n "$corrected" ]; then
+                    export ASCEND_HOME_PATH="$corrected"
+                    echo "  ✓ 已纠正为: $ASCEND_HOME_PATH"
+                    return
+                fi
+            fi
+        fi
+
+        # 优先级 3: 环境变量为空 → 按优先级自动发现
+        if [ -d "$HOME/Ascend/cann" ]; then
+            export ASCEND_HOME_PATH="$HOME/Ascend/cann"
+            echo "  ✓ 自动发现: ASCEND_HOME_PATH=$ASCEND_HOME_PATH"
+        elif ls -d /usr/local/Ascend/cann-* 1>/dev/null 2>&1; then
+            export ASCEND_HOME_PATH=$(ls -d /usr/local/Ascend/cann-* | head -1)
+            echo "  ✓ 自动发现: ASCEND_HOME_PATH=$ASCEND_HOME_PATH"
+        elif [ -d "/usr/local/Ascend/cann" ]; then
+            export ASCEND_HOME_PATH="/usr/local/Ascend/cann"
+            echo "  ✓ 自动发现: ASCEND_HOME_PATH=$ASCEND_HOME_PATH"
+        fi
+    }
+
+    detect_ascend_home
+    echo ""
+
     # 1. 检查环境变量
     echo "[1/7] 检查环境变量..."
     echo "────────────────────────────────────────────────────────────────"
-    
+
     if [ -z "$ASCEND_HOME_PATH" ]; then
         error "ASCEND_HOME_PATH 未设置"
         ENV_DATA[ascend_home_path]=""
         ENV_DATA[ascend_home_path_valid]="false"
-        
+
         echo ""
         echo "  解决方法："
         echo "  export ASCEND_HOME_PATH=/home/developer/Ascend/cann"
