@@ -11,7 +11,43 @@
 - CANN 社区开发者
 - 昇腾 NPU 平台 AI 应用开发者
 - Ascend C / PyPTO 算子开发者
-- 希望贡献 Skills/Agents 的社区贡献者
+- 希望贡献 Skills / Agents 的社区贡献者
+
+&nbsp;
+
+## 🔥 最新动态
+
+### 【2026-04-14】
+#### 新特性 New Features
+- 【仿真，ops-simulator】新增Ascend 950 仿真Skill：支持 Ascend 950 仿真，并且输出性能分析报告和流水线图。
+#### 特性增强 Feature Enhancement
+- 【UT单元测试，ascendc-ut-develop】支持针对 ops-transformer 算子仓的 UT、CSV 代码重构，分离数据与测试代码，提高调试效率。
+- 【aclnn 接口测试用例设计，ascendc-st-design】新增支持aclIntArray / aclFloatArray / aclBoolArray / aclScalarList / aclIntArray类型接口生成ST用例。
+#### 问题修复 Bug Fix
+- 【算子直调，ops-direct-invoke】修改verify_environment.sh脚本，返回environment.json 固定为1的bug，应该按实际设备的npu count返回。
+
+### 【2026-04-13】
+#### 新特性 New Features
+- 【Team调度】支持team级代码条例全量检视，review team 派发条例给代码检视。支持子agent 并行检视、验证，提升检视效果，降低上下文的压力。
+
+### 【2026-04-10】
+#### 新特性 New Features
+- 【PyPTO】新增 Skill：pypto-api-explore，PyPTO API 探索与文档查阅。
+- 【PyPTO】新增 Skill：pypto-golden-generate，Golden 数据生成与验证。
+- 【PyPTO】新增 Skill：pypto-intent-understand，用户需求解析与规格生成。
+- 【PyPTO】新增 Skill：pypto-op-design 算子方案设计，含快速参考和设计模板。
+- 【PyPTO】新增 Skill：pypto-op-develop 算子开发实现，含错误排查、约束参考、测试模板和环境脚本。
+- 【PyPTO】新增 Skill：pypto-op-perf-tune 性能分析与调优（frontend / incore / swimlane 三个子模块）。
+- 【PyPTO】新增 Skill：pypto-precision-debug 精度问题定位与调试。
+- 【PyPTO】新增 Skill：pypto-precision-compare 精度对比验证（含二分查找和自动化脚本）。
+- 【PyPTO】新增 Agent：pypto-op-analyst: 算子分析 Agent
+- 【PyPTO】新增 Agent：pypto-op-developer: 算子开发 Agent
+- 【PyPTO】新增 Agent：pypto-op-perf-tuner: 性能调优 Agent
+- 【PyPTO】新增 Team：pypto-op-orchestrator 算子开发编排 （含初始化脚本和快速入门）。
+
+### 特性发布、变更记录，详见 [CHANGELOG.md](CHANGELOG.md) 文件。
+
+&nbsp;
 
 ## ⚡️快速开始
 
@@ -60,6 +96,8 @@ mkdir -p .opencode && ln -s ../ops/skills .opencode/skills && ln -s ../ops/agent
 ```bash
 opencode
 ```
+
+&nbsp;
 
 ## 🔍 项目架构设计
 
@@ -198,6 +236,7 @@ skills/
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 ```
 
+&nbsp;
 
 ## 🚀 Skills 技能库
 
@@ -212,11 +251,11 @@ skills/
 | **ascendc-tiling-design** | Tiling和Kernel 设计方法论，按算子类别分类 |
 | **ascendc-precision-debug** | 精度调试，症状-原因速查、常见陷阱 |
 | **ascendc-runtime-debug** | 运行时错误调试，错误码解析、Kernel 挂起排查 |
-| **ascendc-ut-develop** | UT 开发与覆盖率增强 |
-| **ascendc-st-design** | aclnn 接口测试用例设计、L0/L1 用例生成 |
+| **ascendc-ut-develop** | UT 单元测试用例开发与覆盖率增强 |
+| **ascendc-st-design** | aclnn 接口测试用例设计、L0 / L1 测试用例生成 |
 | **ascendc-code-review** | 代码检视方法论、5 大类别规范 |
-| **ascendc-task-focus** | 任务聚焦，解决长任务"迷失在中间"问题 |
-| **ascendc-whitebox-design** | 白盒测试用例生成 |
+| **ascendc-task-focus** | 任务聚焦，解决长任务“迷失在中间”的问题 |
+| **ascendc-whitebox-design** | 白盒测试用例设计与生成 |
 | **ascendc-registry-invoke-to-direct-invoke** | 注册调用算子转 `<<<>>>` kernel 直调 |
 | **ascendc-direct-invoke-template** | Kernel 直调工程模板，提供验证过的样例工程和修改指南 |
 | **ops-profiling** | NPU 性能采集与分析，CSV 指标解读、瓶颈定位、优化建议 |
@@ -236,6 +275,8 @@ skills/
 | **pypto-precision-debug** | 精度问题代码层排查 |
 | **pypto-precision-compare** | 精度中间结果对比分析 |
 | **pypto-op-perf-tune** | 算子性能分析与自动调优 |
+
+&nbsp;
 
 ## 🚀 Agents 智能代理
 
@@ -257,27 +298,32 @@ skills/
 | **pypto-op-developer** | 算子代码实现与精度调试 |
 | **pypto-op-perf-tuner** | 性能分析与调优 |
 
+&nbsp;
+
 ## 🛠️ 测试框架
 
 自动化测试验证 Skills 和 Agents 的正确性，确保技能模块和智能代理的行为符合预期。
 详见 [tests/README.md](tests/README.md)。
 
+&nbsp;
 
 ## 📝 许可证
 
 本项目遵循华为 CANN 社区许可证协议，详见 [LICENSE](LICENSE) 文件。
 
+&nbsp;
 
 ## 💖 免责声明
 
 感谢您关注 CANNBot Skills 项目！我们希望这些技能和知识能帮助您更好地进行 CANN 开发。
 
-在使用之前，有几点需要您了解：
+在使用之前，请您了解：
 
-1. **关于内容质量**：由于技术更新迭代，部分内容可能无法完全适用于所有场景。如果发现问题，欢迎提 Issue 告诉我们。
+1. **关于内容质量**：由于技术快速更新迭代，部分内容可能无法完全适用于所有场景。如果发现问题，欢迎提 Issue、讨论来告诉我们。
 
 2. **关于使用目的**：本仓库内容处于 experimental 状态，仅供技术参考和学习使用，建议在测试环境充分验证后再用于生产场景。
 
+&nbsp;
 
 ## 🤝 联系我们
  	 
