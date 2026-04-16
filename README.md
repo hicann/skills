@@ -4,18 +4,25 @@
 
 ### 项目定位
 
-**CANNBot** 是面向CANN开发的用于提升开发效率的系列智能体，本仓库为其提供可复用的Skills模块，目前已实现 Ascend C / PyPTO 算子开发全流程覆盖，未来将拓展至 CANN 更多技术领域。
+**CANNBot** 是面向CANN开发的用于提升开发效率的系列智能体，本仓库为其提供可复用的Skills模块，目前已覆盖 Ascend C / PyPTO 算子开发全流程和 NPU 模型推理端到端优化。
 
 ### 目标用户
 
 - CANN 社区开发者
 - 昇腾 NPU 平台 AI 应用开发者
 - Ascend C / PyPTO 算子开发者
+- 使用昇腾 NPU 进行模型推理优化的开发者
 - 希望贡献 Skills / Agents 的社区贡献者
 
 &nbsp;
 
 ## 🔥 最新动态
+
+### 【2026-04-16】
+#### 新特性 New Features
+- 【模型推理优化】新增 NPU 模型推理端到端优化 Skill 体系，覆盖框架适配、并行策略、KVCache/FA、融合算子、图模式适配等完整优化链路
+- 【模型推理优化】新增 3 个 SubAgent（analyzer / implementer / reviewer），支持多角色协同的阶段化优化工作流
+- 【模型推理优化】新增 infer-model-optimize-team，通过 init.sh 一键安装推理优化环境
 
 ### 【2026-04-14】
 #### 新特性 New Features
@@ -77,6 +84,19 @@ bash init.sh project claude     # Claude Code 用户
 
 详细说明见 [ops/teams/pypto-op-orchestrator/quickstart.md](ops/teams/pypto-op-orchestrator/quickstart.md)。
 
+**NPU 模型推理优化**
+
+适用于 PyTorch 模型的昇腾 NPU 推理性能优化场景。
+
+```bash
+git clone https://gitcode.com/cann/skills.git
+cd skills/model/teams/infer-model-optimize-team
+bash init.sh project opencode   # OpenCode 用户（默认）
+bash init.sh project claude     # Claude Code 用户
+```
+
+详细说明见 [model/teams/infer-model-optimize-team/quickstart.md](model/teams/infer-model-optimize-team/quickstart.md)。
+
 ### 方式二：手动安装
 
 仅安装 Skills 和 Agents，适用于自定义配置场景。
@@ -112,7 +132,13 @@ skills/
 │       ├── ops-direct-invoke/   # 算子 <<<>>> 直调开发流程
 │       └── pypto-op-orchestrator/  # PyPTO 算子开发流程
 ├── ops-lab/               # 算子 Skills/Agents（实验/非正式版）
-├── model/                 # 模型优化
+├── model/                 # 模型推理优化
+│   ├── skills/            # 推理优化技能模块
+│   ├── agents/            # 子 Agent（analyzer / implementer / reviewer）
+│   └── teams/             # 多 Agent 协同
+│       └── infer-model-optimize-team/  # NPU 推理端到端优化流程
+│           ├── model-infer-optimize/   # 工作流入口 Skill
+│           └── hooks/                  # Hook 约束脚本
 └── tests/                 # 自动化测试框架
 ```
 
@@ -277,6 +303,22 @@ skills/
 | **pypto-op-perf-tune** | 算子性能分析与自动调优 |
 
 &nbsp;
+### NPU 模型推理优化
+
+| Skill | 功能 |
+|-------|------|
+| **model-infer-optimize** | 端到端优化编排入口，阶段 0-5 全流程 |
+| **model-infer-migrator** | 框架适配与部署基线建立 |
+| **model-infer-parallel-analysis** | 并行策略分析（TP/EP/DP） |
+| **model-infer-parallel-impl** | 并行切分实施 |
+| **model-infer-kvcache** | KVCache 优化 + FA 替换 |
+| **model-infer-fusion** | torch_npu 融合算子分析与替换 |
+| **model-infer-graph-mode** | torch.compile 图模式适配 |
+| **model-infer-precision-debug** | NPU 推理精度诊断 |
+| **model-infer-runtime-debug** | NPU 运行时错误诊断 |
+| **model-infer-multi-stream** | 多流并行优化 |
+| **model-infer-prefetch** | 权重预取适配 |
+| **model-infer-superkernel** | SuperKernel 适配 |
 
 ## 🚀 Agents 智能代理
 
@@ -299,6 +341,13 @@ skills/
 | **pypto-op-perf-tuner** | 性能分析与调优 |
 
 &nbsp;
+### NPU 模型推理优化
+
+| Agent | 功能 |
+|-------|------|
+| **model-infer-analyzer** | 模型分析、方案设计、并行策略推荐 |
+| **model-infer-implementer** | 代码改造、调试修复 |
+| **model-infer-reviewer** | 精度验证、性能对比 |
 
 ## 🛠️ 测试框架
 

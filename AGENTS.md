@@ -68,7 +68,10 @@ skills/
 │   ├── agents/           # 算子 Agent 定义
 │   └── teams/            # 算子 Teams 配置
 ├── ops-lab/              # 算子 Skills/Agents（实验/非正式版）
-├── model/                # 模型优化
+├── model/                # 模型推理优化
+│   ├── skills/           # 推理优化技能
+│   ├── agents/           # 推理优化 Agent
+│   └── teams/            # 推理优化 Teams（含工作流 Skill 和 Hook）
 └── docs/                 # 项目规范文档
     └── STANDARDS.md      # 开发规范总集
 ```
