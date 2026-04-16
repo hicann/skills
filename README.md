@@ -20,6 +20,7 @@
 
 ### 【2026-04-16】
 #### 新特性 New Features
+- 【插件安装，Plugin】新增 Plugin 化安装体系，支持 Claude Code 和 OpenCode 两种插件安装方式，支持按 Team 精简安装，会话启动时自动注入 CANNBot 上下文
 - 【模型推理优化】新增 NPU 模型推理端到端优化 Skill 体系，覆盖框架适配、并行策略、KVCache/FA、融合算子、图模式适配等完整优化链路
 - 【模型推理优化】新增 3 个 SubAgent（analyzer / implementer / reviewer），支持多角色协同的阶段化优化工作流
 - 【模型推理优化】新增 infer-model-optimize-team，通过 init.sh 一键安装推理优化环境
@@ -58,7 +59,53 @@
 
 ## ⚡️快速开始
 
-### 方式一：脚本安装（推荐）
+### 方式一：Plugin 安装（推荐）
+
+#### Claude Code
+
+```bash
+# 注册 marketplace（首次）
+/plugin marketplace add https://gitcode.com/cann/skills.git
+# 安装 Ascend C 算子直调开发
+/plugin install ops-direct-invoke@cannbot
+# 或安装 PyPTO 算子开发
+/plugin install pypto-op-orchestrator@cannbot
+# 激活插件（加载 Skills/Agents/Hooks）
+/reload-plugins
+# 触发初始化：以下任一方式均可（注入 CANNBot 上下文）
+# 方式 a：新开会话（推荐，自然触发 SessionStart）
+# 方式 b：在当前会话中执行 /clear（会清空当前对话历史）
+```
+
+#### OpenCode
+
+```bash
+# 项目级安装
+opencode plugin cannbot@git+https://gitcode.com/cann/skills.git
+# 全局安装（所有项目可用）
+opencode plugin cannbot@git+https://gitcode.com/cann/skills.git -g
+```
+
+安装后重启 OpenCode。按 Team 精简安装需编辑 `.opencode/opencode.json`：
+```json
+{
+  "plugin": [["cannbot@git+https://gitcode.com/cann/skills.git", {"team": "ops-direct-invoke"}]]
+}
+```
+
+| Team | Agents | Skills |
+|------|--------|--------|
+| `all` | 8 | 25 |
+| `ops-direct-invoke`（默认） | 3 | 11 |
+| `pypto-op-orchestrator` | 3 | 8 |
+
+也可让 OpenCode 自动安装：
+```bash
+Fetch and follow instructions from https://gitcode.com/cann/skills/blob/.opencode/INSTALL.md
+```
+
+
+### 方式二：脚本安装
 
 **Ascend C 算子开发**
 
@@ -97,7 +144,7 @@ bash init.sh project claude     # Claude Code 用户
 
 详细说明见 [model/teams/infer-model-optimize-team/quickstart.md](model/teams/infer-model-optimize-team/quickstart.md)。
 
-### 方式二：手动安装
+### 方式三：手动安装
 
 仅安装 Skills 和 Agents，适用于自定义配置场景。
 
@@ -375,15 +422,15 @@ skills/
 &nbsp;
 
 ## 🤝 联系我们
- 	 
+   
 本项目的功能和文档正在持续更新和完善中，欢迎您关注最新版本。
- 	 
+   
 ### 需求、问题、咨询、任务、文档
 通过GitCode[【Issues】](https://gitcode.com/cann/skills/issues)提交。
- 	 
+   
 ### 社区互动
 通过GitCode[【讨论】](https://gitcode.com/cann/skills/discussions)参与交流。
- 	 
+   
 ### 微信群
 ![](./docs/contact-us.jpg)
 

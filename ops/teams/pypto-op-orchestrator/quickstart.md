@@ -17,84 +17,59 @@ CANNBot PyPTO 算子开发模式适用于通过 **PyPTO（Python Tensor Processi
 
 ## 一、环境搭建
 
-### 操作步骤
+### Claude Code
 
-#### 方式一：项目级安装（推荐）
-
-在项目目录下安装，配置仅对当前项目生效。
+**首选：Plugin Marketplace（一键安装）**
 
 ```bash
-# 1. 克隆 CANN Skills 仓库
-git clone https://gitcode.com/cann/skills.git
+# 注册 marketplace（首次，GitCode 仓库需完整 URL）
+/plugin marketplace add https://gitcode.com/cann/skills.git
 
-# 2. 进入 PyPTO 算子开发目录
-cd skills/teams/pypto-op-orchestrator
-
-# 3. 执行初始化脚本（项目级）
-bash init.sh project opencode   # OpenCode 用户（默认）
-bash init.sh project claude     # Claude Code 用户
+# 安装插件
+/plugin install pypto-op-orchestrator@cannbot
 ```
 
-#### 方式二：全局安装
-
-在用户目录下安装，配置全局生效。
+**备选：init.sh 脚本**
 
 ```bash
-# 1. 克隆 CANN Skills 仓库
 git clone https://gitcode.com/cann/skills.git
-
-# 2. 进入 PyPTO 算子开发目录
-cd skills/teams/pypto-op-orchestrator
-
-# 3. 执行初始化脚本（全局）
-bash init.sh global opencode    # OpenCode 用户（默认）
-bash init.sh global claude      # Claude Code 用户
+cd skills/ops/teams/pypto-op-orchestrator
+bash init.sh project claude     # 项目级
+bash init.sh global claude      # 全局级
 ```
 
-### 安装内容
+### OpenCode
 
-init.sh 脚本会完成以下操作：
+**首选：init.sh 脚本**
 
-| 内容 | OpenCode 项目级 | OpenCode 全局 | Claude 项目级 | Claude 全局 |
-|------|----------------|---------------|---------------|-------------|
-| Skills 技能模块 | `.opencode/skills/` | `~/.config/opencode/skills/` | `.claude/skills/` | `~/.claude/skills/` |
-| Agents 子代理 | `.opencode/agents/` | `~/.config/opencode/agents/` | `.claude/agents/` | `~/.claude/agents/` |
-| AGENTS.md | `.opencode/AGENTS.md` | `~/.config/opencode/AGENTS.md` | `.claude/CLAUDE.md` | `~/.claude/CLAUDE.md` |
-
-### 环境校验
-
-执行完上述步骤后，检查目录结构是否符合以下规范：
-
-**项目级安装**：
+```bash
+git clone https://gitcode.com/cann/skills.git
+cd skills/ops/teams/pypto-op-orchestrator
+bash init.sh project opencode   # 项目级（默认）
+bash init.sh global opencode    # 全局级
 ```
-skills/teams/pypto-op-orchestrator/
-├── .opencode/
-│   ├── skills/                    # 技能模块
-│   │   ├── pypto-intent-understand/
-│   │   ├── pypto-api-explore/
-│   │   ├── pypto-golden-generate/
-│   │   ├── pypto-op-design/
-│   │   ├── pypto-op-orchestratorelop/
-│   │   ├── pypto-op-perf-tune/
-│   │   ├── pypto-precision-debug/
-│   │   └── pypto-precision-compare/
-│   ├── agents/                    # 子代理
-│   │   ├── pypto-op-analyst/
-│   │   ├── pypto-op-orchestratoreloper/
-│   │   └── pypto-op-perf-tuner/
-│   ├── AGENTS.md                  # Agent 配置
-│   └── cannbot-manifest.json      # 安装清单
-├── init.sh                        # 初始化脚本
-└── quickstart.md                  # 本文档
+
+### 验证安装
+
+```bash
+# Claude Code
+claude plugin list
+# 应看到 pypto-op-orchestrator@cannbot ✔ enabled
+
+# OpenCode
+opencode agent list
+# 应看到 pypto-op-analyst / pypto-op-developer / pypto-op-perf-tuner
 ```
 
 ## 二、快速上手
 
 ### 启动
 
-在初始化完成的目录下执行：
-
 ```bash
+# Claude Code
+claude
+
+# OpenCode
 opencode
 ```
 
@@ -143,7 +118,7 @@ custom/softmax/
 | `pypto-api-explore` | API 可行性探索与分析 | Stage 2 |
 | `pypto-golden-generate` | Golden 参考实现生成 | Stage 3 |
 | `pypto-op-design` | 算子设计方案生成 | Stage 4 |
-| `pypto-op-orchestratorelop` | 算子代码实现与测试 | Stage 5 |
+| `pypto-op-develop` | 算子代码实现与测试 | Stage 5 |
 | `pypto-precision-debug` | 精度问题代码层排查 | Stage 6 |
 | `pypto-precision-compare` | 精度中间结果对比分析 | Stage 6（辅助） |
 | `pypto-op-perf-tune` | 算子性能分析与自动调优 | Stage 7 |
@@ -151,7 +126,7 @@ custom/softmax/
 | Agent | 用途 | 负责阶段 |
 |-------|------|---------|
 | `pypto-op-analyst` | Golden 生成与设计 | Stage 3-4 |
-| `pypto-op-orchestratoreloper` | 代码实现与精度修复 | Stage 5-6 |
+| `pypto-op-developer` | 代码实现与精度修复 | Stage 5-6 |
 | `pypto-op-perf-tuner` | 性能分析与调优 | Stage 7 |
 
 ## 四、断点续跑与恢复
@@ -177,9 +152,15 @@ bash init.sh --help
 - **项目级**：适合多项目开发，每个项目可以有不同配置
 - **全局**：适合单一项目，全局生效
 
-### Q: 如何更新技能模块？
+### Q: 如何更新？
 
-重新执行 init.sh 即可，脚本会自动覆盖旧版本。
+```bash
+# Claude Code
+/plugin update pypto-op-orchestrator@cannbot
+
+# OpenCode (init.sh 方式)
+cd skills/ops/teams/pypto-op-orchestrator && bash init.sh
+```
 
 ### Q: PyPTO 和 Kernel 直调模式如何选择？
 
@@ -197,7 +178,7 @@ bash init.sh --help
 ## 总结
 
 1. PyPTO 算子开发模式通过 7 阶段状态机实现端到端自动化
-2. 环境搭建核心两步：克隆仓库 → 执行 init.sh
-3. `opencode` / `claude` 是核心交互指令
+2. Claude Code 用户用 `/plugin install` 一键安装，OpenCode 用户用 `init.sh` 脚本安装
+3. `claude` / `opencode` 是核心交互指令
 4. 所有阶段通过门禁驱动，支持断点续跑与失败恢复
 5. 产出物包含完整的参考实现、设计文档、PyPTO 实现和测试入口

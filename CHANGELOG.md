@@ -1,5 +1,19 @@
 ## 🔥 更新日志
 
+### 【2026-04-16】
+#### 新特性 New Features
+- 【插件安装，Plugin】新增 Plugin 化安装体系，支持 Claude Code 和 OpenCode 两种插件安装方式：
+  - Claude Code 用户：通过 `/plugin marketplace add` 注册，`/plugin install` 按 Team 安装
+  - OpenCode 用户：通过 `opencode plugin` 命令安装，支持项目级和全局安装
+  - 支持按 Team 精简安装（ops-direct-invoke / pypto-op-orchestrator），避免加载不需要的 Agents 和 Skills
+- 【Session Hook】ops-direct-invoke 和 pypto-op-orchestrator 两个 Team 新增 session-start Hook，会话启动时自动注入 CANNBot 上下文，无需用户手动执行初始化命令
+- 【安装方式，README】README 快速开始新增"方式一：Plugin 安装（推荐）"和"方式二：脚本安装"，按 Claude Code / OpenCode 分类说明安装步骤
+#### 特性增强 Feature Enhancement
+- 【算子直调，ops-direct-invoke】init.sh 和 quickstart.md 适配 Plugin 安装方式，支持按 Team 隔离配置
+- 【PyPTO，pypto-op-orchestrator】init.sh 和 quickstart.md 适配 Plugin 安装方式，支持按 Team 隔离配置
+- 【版本维护，tests】新增 Plugin 版本维护测试框架（tests/unit/teams/test-version.sh），支持版本一致性校验和自动化测试
+
+
 ### 【2026-04-14】
 #### 新特性 New Features
 - 【仿真，ops-simulator】新增Ascend 950 仿真Skill：支持 Ascend 950 仿真，并且输出性能分析报告和流水线图。

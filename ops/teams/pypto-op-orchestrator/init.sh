@@ -68,7 +68,7 @@ Examples:
 
 Installation paths (CANNBot brand):
   OpenCode: .opencode/{skills,agents}/  (auto-discovered)
-  Claude:   .claude/{skills,agents}/    (per-skill symlinks auto-created)
+  Claude:   .claude/{skills,agents}/    (symlinks → ../../agents/, ../../skills/)
 
 After installation, launch directly:
   OpenCode: opencode

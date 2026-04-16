@@ -30,7 +30,7 @@ RUN_ALL=false
 RUN_EVAL_RESULTS=false
 PLATFORM="opencode"
 OUTPUT_FORMAT="text"
-VERBOSE=false
+VERBOSE=true
 TIMEOUT=300
 SPECIFIC_TEST=""
 CATEGORY=""
@@ -268,6 +268,7 @@ get_tests_for_category() {
             echo "unit/agents/test-content.sh:fast"
             echo "unit/teams/test-structure.sh:fast"
             echo "unit/teams/test-content.sh:fast"
+            echo "unit/teams/test-version.sh:fast"
             ;;
         behavior)
             echo "behavior/skills/test-trigger-correctness.sh:medium"

@@ -118,6 +118,31 @@ tests/
 | A-CON-03 | 命名符合前缀规范 | 必须 | test-content.sh |
 | A-CON-04 | 核心职责章节 | 必须 | test-content.sh |
 
+#### Teams (unit/teams/)
+
+| 测试文件 | 验证项 |
+|---------|--------|
+| `test-structure.sh` | YAML格式、description/mode/skills字段、依赖存在、description长度、链接有效性 |
+| `test-content.sh` | 目录命名格式、触发关键词、核心原则章节 |
+| `test-version.sh` | plugin.json SemVer 格式、Skill/Agent 变更检测、版本升级建议 |
+
+#### Teams 版本看护规则
+
+| 版本位 | 触发条件 | 示例 |
+|--------|---------|------|
+| **PATCH** (第3位) | Skills 列表或内容发生变化 | `1.0.0` → `1.0.1` |
+| **MINOR** (第2位) | Agents 列表或内容发生变化 | `1.0.0` → `1.1.0` |
+| **MAJOR** (第1位) | 团队工作流/接口不兼容变更 | `1.0.0` → `2.0.0` |
+
+版本快照存储在 `tests/.version-state/<team-name>.json`，每次运行测试自动更新（仅 PASS 时）。
+
+#### 市场注册表一致性
+
+`plugin.json` 是 plugin 的权威定义，但用户通过市场（`package.json` / `marketplace.json`）看到的版本号决定是否需要升级。如果两者不同步，用户无法感知版本变化。
+
+测试会在以下情况拦截：
+- 修改了 `plugin.json` 的 version，但未同步更新 `package.json`（OpenCode）或 `marketplace.json`（Claude）
+
 ### L2 行为测试
 
 #### Skills (behavior/skills/)

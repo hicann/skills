@@ -1360,6 +1360,238 @@ analyze_cost_breakdown() {
 }
 
 # =============================================================================
+# Plugin Version Management
+# =============================================================================
+
+# Version state directory
+VERSION_STATE_DIR="$TESTS_DIR/.version-state"
+
+# Get team plugin.json path
+# Usage: get_team_plugin_json "ops-direct-invoke"
+# Returns: full path to plugin.json
+get_team_plugin_json() {
+    local team_name="$1"
+    local plugin_path="$SKILLS_DIR/ops/teams/$team_name/.claude-plugin/plugin.json"
+    if [ -f "$plugin_path" ]; then
+        echo "$plugin_path"
+    else
+        echo ""
+    fi
+}
+
+# Extract version from plugin.json
+# Usage: extract_plugin_version "/path/to/plugin.json"
+# Returns: version string (e.g., "1.0.0")
+extract_plugin_version() {
+    local plugin_json="$1"
+    if [ -f "$plugin_json" ]; then
+        grep '"version"' "$plugin_json" | head -1 | sed 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/'
+    fi
+}
+
+# Extract skills list from plugin.json
+# Usage: extract_plugin_skills "/path/to/plugin.json"
+# Returns: space-separated list of skill paths (relative)
+extract_plugin_skills() {
+    local plugin_json="$1"
+    if [ -f "$plugin_json" ]; then
+        # Extract skills array items
+        local in_skills=false
+        while IFS= read -r line; do
+            if echo "$line" | grep -q '"skills"'; then
+                in_skills=true
+                continue
+            fi
+            if $in_skills; then
+                if echo "$line" | grep -q '^\s*\]'; then
+                    break
+                fi
+                local skill=$(echo "$line" | sed 's/.*"\(\.[^"]*\)".*/\1/' | tr -d '[:space:]')
+                if [ -n "$skill" ] && [ "$skill" != "$line" ]; then
+                    echo "$skill"
+                fi
+            fi
+        done < "$plugin_json"
+    fi
+}
+
+# Extract agents list from plugin.json
+# Usage: extract_plugin_agents "/path/to/plugin.json"
+# Returns: space-separated list of agent file paths (relative)
+extract_plugin_agents() {
+    local plugin_json="$1"
+    if [ -f "$plugin_json" ]; then
+        local in_agents=false
+        while IFS= read -r line; do
+            if echo "$line" | grep -q '"agents"'; then
+                in_agents=true
+                continue
+            fi
+            if $in_agents; then
+                if echo "$line" | grep -q '^\s*\]'; then
+                    break
+                fi
+                local agent=$(echo "$line" | sed 's/.*"\(\.[^"]*\)".*/\1/' | tr -d '[:space:]')
+                if [ -n "$agent" ] && [ "$agent" != "$line" ]; then
+                    echo "$agent"
+                fi
+            fi
+        done < "$plugin_json"
+    fi
+}
+
+# Validate SemVer format
+# Usage: validate_semver "1.0.0"
+# Returns: 0 if valid, 1 if invalid
+validate_semver() {
+    local version="$1"
+    if echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Compute SHA256 hash of a file (just the first 16 chars for brevity)
+# Usage: compute_file_hash "/path/to/file"
+# Returns: short hash string
+compute_file_hash() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        sha256sum "$file" | cut -c1-16
+    else
+        echo "MISSING"
+    fi
+}
+
+# Save version state for a team
+# Usage: save_version_state "ops-direct-invoke" "1.0.0"
+# Uses global variables: SKILLS_HASH, AGENTS_HASH (associative arrays)
+save_version_state() {
+    local team_name="$1"
+    local version="$2"
+
+    mkdir -p "$VERSION_STATE_DIR"
+    local state_file="$VERSION_STATE_DIR/$team_name.json"
+
+    # Build JSON
+    local skills_json="{"
+    local first=true
+    for skill_name in "${!SKILLS_HASH[@]}"; do
+        if $first; then first=false; else skills_json+=","; fi
+        skills_json+="\"$skill_name\":\"${SKILLS_HASH[$skill_name]}\""
+    done
+    skills_json+="}"
+
+    local agents_json="{"
+    first=true
+    for agent_name in "${!AGENTS_HASH[@]}"; do
+        if $first; then first=false; else agents_json+=","; fi
+        agents_json+="\"$agent_name\":\"${AGENTS_HASH[$agent_name]}\""
+    done
+    agents_json+="}"
+
+    cat > "$state_file" <<EOF
+{
+  "version": "$version",
+  "timestamp": "$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')",
+  "skills": $skills_json,
+  "agents": $agents_json
+}
+EOF
+}
+
+# Load version state for a team
+# Usage: load_version_state "ops-direct-invoke"
+# Sets: LOADED_VERSION, LOADED_SKILLS, LOADED_AGENTS (space-separated key:hash pairs)
+load_version_state() {
+    local team_name="$1"
+    local state_file="$VERSION_STATE_DIR/$team_name.json"
+
+    LOADED_VERSION=""
+    LOADED_SKILLS=""
+    LOADED_AGENTS=""
+
+    if [ ! -f "$state_file" ]; then
+        return 1
+    fi
+
+    LOADED_VERSION=$(extract_plugin_version "$state_file")
+    # Parse skills and agents from state JSON
+    if command -v python3 &>/dev/null; then
+        LOADED_SKILLS=$(python3 -c "
+import json, sys
+with open('$state_file') as f:
+    data = json.load(f)
+for k,v in data.get('skills',{}).items():
+    print(f'{k}:{v}')
+" 2>/dev/null || true)
+        LOADED_AGENTS=$(python3 -c "
+import json, sys
+with open('$state_file') as f:
+    data = json.load(f)
+for k,v in data.get('agents',{}).items():
+    print(f'{k}:{v}')
+" 2>/dev/null || true)
+    else
+        # Fallback: simple grep
+        LOADED_SKILLS=$(grep -oE '"[a-z0-9_-]+":"[a-f0-9]+"' "$state_file" | tr -d '"' | sed 's/:/ /' || true)
+        LOADED_AGENTS=""
+    fi
+
+    return 0
+}
+
+# Recommend version bump based on changes
+# Usage: recommend_version_bump "1.0.0" true false
+# Args: current_version, skill_changed, agent_changed
+# Returns: recommended version string
+recommend_version_bump() {
+    local current="$1"
+    local skill_changed="$2"
+    local agent_changed="$3"
+
+    if ! validate_semver "$current"; then
+        echo "INVALID"
+        return 1
+    fi
+
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$current"
+
+    if [ "$agent_changed" = "true" ]; then
+        # Agent change → bump MINOR, reset PATCH
+        minor=$((minor + 1))
+        patch=0
+    elif [ "$skill_changed" = "true" ]; then
+        # Skill change → bump PATCH
+        patch=$((patch + 1))
+    fi
+
+    echo "${major}.${minor}.${patch}"
+}
+
+# Compare two SemVer versions
+# Usage: semver_compare "1.0.0" "1.0.1"
+# Returns: -1 if first < second, 0 if equal, 1 if first > second
+semver_compare() {
+    local v1="$1"
+    local v2="$2"
+
+    local major1 minor1 patch1 major2 minor2 patch2
+    IFS='.' read -r major1 minor1 patch1 <<< "$v1"
+    IFS='.' read -r major2 minor2 patch2 <<< "$v2"
+
+    if [ "$major1" -gt "$major2" ] 2>/dev/null; then echo "1"; return; fi
+    if [ "$major1" -lt "$major2" ] 2>/dev/null; then echo "-1"; return; fi
+    if [ "$minor1" -gt "$minor2" ] 2>/dev/null; then echo "1"; return; fi
+    if [ "$minor1" -lt "$minor2" ] 2>/dev/null; then echo "-1"; return; fi
+    if [ "$patch1" -gt "$patch2" ] 2>/dev/null; then echo "1"; return; fi
+    if [ "$patch1" -lt "$patch2" ] 2>/dev/null; then echo "-1"; return; fi
+    echo "0"
+}
+
+# =============================================================================
 # Token Usage Analysis
 # =============================================================================
 
@@ -1549,6 +1781,16 @@ export -f print_error
 export -f print_section_header
 export -f print_status_passed
 export -f print_status_failed
+export -f get_team_plugin_json
+export -f extract_plugin_version
+export -f extract_plugin_skills
+export -f extract_plugin_agents
+export -f validate_semver
+export -f compute_file_hash
+export -f save_version_state
+export -f load_version_state
+export -f recommend_version_bump
+export -f semver_compare
 export LIB_DIR TESTS_DIR SKILLS_DIR
 
 # Force enable colors when sourced (unless NO_COLOR is set)

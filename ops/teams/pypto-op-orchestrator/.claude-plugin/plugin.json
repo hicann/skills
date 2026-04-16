@@ -1,0 +1,24 @@
+{
+  "name": "pypto-op-orchestrator",
+  "description": "PyPTO 算子端到端开发 Team。7 阶段状态机编排，含 3 个 Subagent，支持断点续跑和失败恢复。",
+  "version": "1.0.0",
+  "author": { "name": "CANNBot" },
+  "homepage": "https://gitcode.com/cann/skills",
+  "repository": "https://gitcode.com/cann/skills",
+  "license": "MIT",
+  "agents": [
+    "./agents/pypto-op-analyst.md",
+    "./agents/pypto-op-developer.md",
+    "./agents/pypto-op-perf-tuner.md"
+  ],
+  "skills": [
+    "./skills/pypto-api-explore",
+    "./skills/pypto-golden-generate",
+    "./skills/pypto-intent-understand",
+    "./skills/pypto-op-design",
+    "./skills/pypto-op-develop",
+    "./skills/pypto-op-perf-tune",
+    "./skills/pypto-precision-compare",
+    "./skills/pypto-precision-debug"
+  ]
+}
