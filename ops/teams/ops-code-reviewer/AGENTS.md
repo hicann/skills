@@ -25,9 +25,10 @@ permission:
 ## 核心原则
 
 1. **主 Agent 做大脑，子 Agent 做搜查**
-   - 主 Agent 在派发前必须完成：读代码、识别侧别、读文档、提取过滤条例、分组
-   - 主 Agent 将条例完整内容（规则 + 错误示例 + 正确示例）嵌入子 Agent 的 prompt
-   - 子 Agent 只验证指定的 3-5 条条例，返回逐条结果，**禁止读检视文档，禁止写报告**
+   - 主 Agent 在派发前必须完成：读代码、识别侧别、读文档、提取过滤条例清单、分组
+   - 主 Agent 传递上下文信息：侧别识别结果、已过滤的条款列表、条例 ID 和标题
+   - 子 Agent 收到上下文后，**自主执行阶段3-6的检视流程**，自行从检视文档中读取条例完整内容
+   - 子 Agent 只验证指定的 3-5 条条例，返回逐条结果，快速检视模式自动短路阶段7-8
 
 2. **条例级并行，全量覆盖**
    - 每个子 Agent 分配 3-5 条条例（安全类 3 条/组，风格/通用类 5 条/组）
@@ -84,7 +85,7 @@ permission:
 3. 判断侧别：
    - **Kernel 侧**：路径含 `op_kernel/`，或扩展名为 `.asc`，或代码含 `AscendC::` API
    - **Tiling 侧**：路径含 `op_host/`，或文件名含 `tiling`、`infershape`
-   - **混合/未知**：默认 All
+   - **混合/未知**：默认 所有条例
 4. 通过内置 `ascendc-code-review` skill 定位检视文档，读取快速索引
 5. 按侧别过滤，提取适用条例清单（条例 ID + 标题）
 6. 输出：`代码侧别：xxx | 适用条例：N 条（来自 M 个文档）`
@@ -139,13 +140,29 @@ permission:
 1. 将任务1 标记为 `in_progress`
 2. 提取 PR 链接，判断托管平台：
    - URL 含 `gitcode.com` → **GitCode**
-3. **定位 diff 脚本**：
-   - `Glob("**/ascendc-code-review/scripts/get_gitcode_pr_diff.py", path="~/.opencode")`
+3. **定位 diff 脚本**（从 skill 输出提取路径）：
+   - 调用 Skill tool 加载 `ascendc-code-review` skill
+   - 从输出 `<skill_content>` 中提取 `Base directory for this skill:` 行
+   - Base directory 格式为 URL（如 `file:///path/to/skill/`），转换为本地路径：
+     - 去掉 `file://` 前缀即可得到本地路径
+   - 脚本路径 = `{base_directory}/scripts/get_gitcode_pr_diff.py`
 4. **获取 diff 并保存**：
    - `mkdir -p ./ops/.pr_diff`
-   - `python3 {script_path} --repo {repo_url} --pr {pr_number} > ./ops/.pr_diff/{pr_number}.diff`
-5. 从 diff 文件判断侧别（`head -50 ./ops/.pr_diff/{pr_number}.diff` 查看变更文件路径）
+   - 执行脚本获取 diff（使用 `--output` 参数保存文件）：
+     ```bash
+     python3 {script_path} --repo {repo_url} --pr {pr_number} --output ./ops/.pr_diff/{pr_number}.diff
+     ```
+   - **可选参数**：
+     - `--file-filter "*.asc"`：仅获取特定类型文件的 diff
+     - `--stat`：仅显示变更统计信息（快速了解改动范围）
+   - **URL 格式说明**：
+     - `--repo` 支持完整仓库 URL（如 `https://gitcode.com/cann/ops-transformer`）
+     - 也支持完整 PR URL（脚本会自动提取 PR 编号）
+5. 从 diff 文件判断侧别（`head -100 ./ops/.pr_diff/{pr_number}.diff` 查看变更文件路径）
 6. 提取适用条例
+   - **Kernel 侧**：路径含 `op_kernel/`，或扩展名为 `.asc`，或代码含 `AscendC::` API
+   - **Tiling 侧**：路径含 `op_host/`，或文件名含 `tiling`、`infershape`
+   - **混合/未知**：默认 所有条例
 7. 输出：`代码侧别: xxx | 适用条例: N 条 | diff文件: ./ops/.pr_diff/{pr_number}.diff`
 8. 将任务1 标记为 `done`
 
@@ -189,7 +206,7 @@ permission:
 
 ## 子 Agent 调用模板
 
-> 以下为主 Agent 派发子 Agent 时使用的 prompt 格式。条例完整内容必须由主 Agent 从文档中提取后嵌入，禁止只传条例 ID。
+> 以下为主 Agent 派发子 Agent 时使用的 prompt 格式。主 Agent 传递已完成工作的上下文（侧别识别、条款过滤）、检视对象路径、条款 ID 和标题，子 Agent 自主执行阶段3-6的检视流程。
 
 ### 文件检视调用模板
 
@@ -199,7 +216,7 @@ permission:
 Agent({
   "subagent_type": "ascendc-ops-reviewer",
   "description": "检视组N：{条例ID列表}",
-  "prompt": "检视模式：快速检视\n\n检视文件：{code_file_path}\n\n只检视以下条例：\n{条例ID-1} {条例标题}\n{条例ID-2} {条例标题}\n\n禁止写报告文件。"
+  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n\n检视文件：{code_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
 })
 ```
 
@@ -211,11 +228,13 @@ Agent({
 Agent({
   "subagent_type": "ascendc-ops-reviewer",
   "description": "检视组N：{条例ID列表}",
-  "prompt": "检视模式：快速检视\n\n检视 PR diff：{diff_file_path}\n\n只检视以下条例：\n{条例ID-1} {条例标题}\n{条例ID-2} {条例标题}\n\n禁止写报告文件。"
+  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n\n检视 PR diff：{diff_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
 })
 ```
 
-**注意**：`{diff_file_path}` 为阶段1写入的本地文件路径（如 `./ops/.pr_diff/3604.diff`）。
+**注意**：
+- `{diff_file_path}` 为阶段1写入的本地文件路径（如 `./ops/.pr_diff/3604.diff`）
+- 子 Agent 通过 `ascendc-code-review` skill 定位检视文档路径
 
 ---
 
@@ -384,13 +403,15 @@ Agent({
 
 ### 主 Agent 责任边界
 - **必须**率先完成侧别识别，才能派发子 Agent
-- **必须**在 prompt 中传递条例 ID、标题和文档路径，由子 Agent 自行读取条例内容
+- **必须**在 prompt 中传递条例 ID 和条例标题（**标题不可省略**）
+- **禁止**传递条例详细内容（规则、示例等），由子 Agent 自行从检视文档中读取
 - **必须**在所有子 Agent 返回后统一撰写报告
 - **禁止**在派发前自行做检视判断（交给子 Agent）
 
 ### 子 Agent 约束（通过 prompt 强制）
 - **只验证**主 Agent 分配的 3-5 条条例
-- **自行 Read** 文档找到对应条例 ID 的规则和示例
+- **必须先 Read** 检视文档，提取条例完整内容（规则描述、错误示例、正确示例、注意事项）
+- 通过 `ascendc-code-review` skill 定位检视文档路径
 - **禁止**撰写或生成任何报告文件
 - **只返回**结构化的逐条检视结果
 
@@ -410,17 +431,21 @@ Agent({
 1. **流程待办强制创建**：任务启动后第一件事创建 4 个固定任务
 2. **阶段状态实时更新**：每个阶段开始时标记 `in_progress`，完成后标记 `done`
 3. **主 Agent 率先识别侧别**：派发前必须完成代码读取和侧别识别，用于过滤适用条例
-4. **条例以 ID+标题传递**：prompt 中必须嵌入条例 ID 和条例标题（**标题不可省略**）
-5. **PR diff 由子 Agent 自行获取**：主 Agent 只传 PR 链接，不获取、不缓存 diff
-6. **每组 3-5 条上限**：单个子 Agent 不得分配超过 5 条条例
-7. **单波并行度 ≤10**：每波最多同时派发 10 个子 Agent，在单个消息中发出
-8. **波次内并行，波次间串行**：必须等当前波次所有子 Agent 返回后，才能派发下一波
-9. **行号校对强制**：所有波次完成后，必须校对 FAIL/SUSPICIOUS 行号
-10. **代码片段强制**：FAIL/SUSPICIOUS 发现必须附 10 行以上代码片段
+4. **上下文信息传递**：prompt 中传递侧别识别结果、条例 ID 和条例标题（**禁止传递条例详细内容**）
+5. **条例内容由子 Agent 提取**：子 Agent 自主执行阶段3，从检视文档中读取条例完整内容
+6. **PR diff 由主 Agent 获取**：主 Agent 获取 diff 并保存到本地，传递 diff 文件路径给子 Agent
+7. **每组 3-5 条上限**：单个子 Agent 不得分配超过 5 条条例
+8. **单波并行度 ≤10**：每波最多同时派发 10 个子 Agent，在单个消息中发出
+9. **波次内并行，波次间串行**：必须等当前波次所有子 Agent 返回后，才能派发下一波
+10. **行号校对强制**：所有波次完成后，必须校对 FAIL/SUSPICIOUS 行号
+11. **代码片段强制**：FAIL/SUSPICIOUS 发现必须附 10 行以上代码片段
 
 **违反约束的处理**：
 - 未创建待办就开始执行 → 错误，必须先创建待办
 - 主 Agent 委托派发或用 Bash 脚本派发 → 错误，主 Agent 必须自己调用 `Agent` 工具
 - 跨波次同时派发 → 错误，必须等当前波次完成
 - 子 Agent prompt 缺少条例标题 → 错误，ID 和标题必须同时出现
+- 子 Agent prompt 缺少侧别信息 → 错误，侧别识别结果必须传递
+- 主 Agent 在 prompt 中传递条例详细内容 → 错误，只传上下文、ID 和标题
+- 主 Agent 在 prompt 中指令子 Agent 流程行为 → 错误，尊重子 Agent 自律机制
 - 跳过行号校对 → 错误，必须执行校对
