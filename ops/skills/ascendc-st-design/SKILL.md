@@ -255,6 +255,39 @@ python skills/ascendc-st-design/scripts/generate_test_cases.py \
     --verbose
 ```
 
+**可选参数**：
+- `--md-file`: 接口文档路径（用于判断搬运类算子，自动从参数定义路径推断）
+- `--aclnn-name`: 算子名称（默认从文件路径中提取）
+- `--target-count N`: L1目标用例数量（默认500）
+- `--seed N`: 随机数种子（用于复现L1补齐）
+- `--report-output`: 覆盖度报告文件名
+- `--case-output`: 测试用例文件名
+
+**`--md-file` 和 `--aclnn-name` 使用示例**：
+
+```bash
+# 示例1: 指定接口文档路径，用于判断搬运类算子
+python skills/ascendc-st-design/scripts/generate_test_cases.py \
+    ops-math/math/add/tests/st/design/03_参数定义.yaml \
+    ops-math/math/add/tests/st/design/04_测试因子.yaml \
+    ops-math/math/add/tests/st/design/07_因子值.csv \
+    ops-math/math/add/tests/st/testcases/ \
+    --level L0 \
+    --md-file "ops-math/math/add/docs/aclnnAdd&aclnnInplaceAdd.md" \
+    --verbose
+
+# 示例2: 指定算子名称（当参数定义路径无法推断时）
+python skills/ascendc-st-design/scripts/generate_test_cases.py \
+    custom_path/03_参数定义.yaml \
+    custom_path/04_测试因子.yaml \
+    custom_path/07_因子值.csv \
+    custom_path/testcases/ \
+    --level L0 \
+    --aclnn-name aclnnAdd \
+    --md-file "docs/aclnnAdd.md" \
+    --verbose
+```
+
 **超时设置**：在调用 Bash 工具时设置 `timeout=300000`（5分钟）
 
 **用例级别说明**：
@@ -267,6 +300,79 @@ python skills/ascendc-st-design/scripts/generate_test_cases.py \
 **L1 可选参数**：`--target-count N`（目标用例数量，默认500）、`--seed N`（随机数种子）
 
 **输出文件**：`L0_coverage_report.yaml`、`L0_test_cases.csv`、`L1_coverage_report.yaml`、`L1_test_cases.csv`
+
+#### 8.1 precision_mode 和 precision_tolerance 生成规则
+
+**生成原则**：
+
+1. **搬运类算子判断**：通过接口文档（md 文件）实时判断
+   - 功能说明中包含关键词：复制、拷贝、搬运、调换、转置、扁平化、切片等
+   - 算子名称包含：Copy、Clone、Transpose、Permute、Flatten、Slice、Split 等
+   - **搬运类算子统一配置**：`precision_mode=7`，`precision_tolerance=((0,0,0,0,0),)`
+
+2. **非搬运类算子**：根据输出张量的数据类型区分
+
+**precision_tolerance 五个值含义**：
+
+`precision_tolerance=((v1, v2, v3, v4, v5),)` 中的五个值依次代表：
+
+| 序号 | 名称 | 变量名 | 含义 |
+| ---- | ---- | ------ | ---- |
+| v1 | 相对误差阈值 | diff_thd | 相对误差的允许上限 |
+| v2 | 准确率阈值 | pct_thd | 准确率的最低要求 |
+| v3 | 最大相对误差阈值 | max_diff_thd | 相对误差的最大允许值 |
+| v4 | 相对误差阈值 | rtol | 计算结果与期望结果的相对误差阈值 |
+| v5 | 绝对误差阈值 | atol | 计算结果与期望结果的绝对误差阈值 |
+
+**数据类型配置表**：
+
+| 数据类型 | precision_mode | precision_tolerance |
+| -------- | -------------- | ------------------- |
+| float32 | 1 | ((0.0001,0.0001,0.1,0.0001,0.0001),) |
+| float16 | 1 | ((0.001,0.001,0.1,0.001,0.001),) |
+| float64 | 1 | ((0.0001,0.0001,0.1,0.001,0.0001),) |
+| bfloat16 | 1 | ((0.005,0.005,0.1,0.005,0.005),) |
+| float4_e2m1 | 7 | ((0,0,0,0,0),) |
+| float4_e1m2 | 7 | ((0,0,0,0,0),) |
+| float8_e4m3fn | 10 | ((0,0.001,1,0,0),) |
+| float8_e5m2 | 10 | ((0,0.001,1,0,0),) |
+| float8_e8m0 | 10 | ((0,0.001,1,0,0),) |
+| hifloat8 | 10 | ((0,0.001,1,0,0),) |
+| int8 | 7 | ((0,0,0,0,0),) |
+| int16 | 7 | ((0,0,0,0,0),) |
+| int32 | 7 | ((0,0,0,0,0),) |
+| int64 | 7 | ((0,0,0,0,0),) |
+| uint8 | 7 | ((0,0,0,0,0),) |
+| uint16 | 7 | ((0,0,0,0,0),) |
+| uint32 | 7 | ((0,0,0,0,0),) |
+| uint64 | 7 | ((0,0,0,0,0),) |
+| bool | 7 | ((0,0,0,0,0),) |
+| complex32 | 1 | ((0.001,0.001,0.1,0.001,0.001),) |
+| complex64 | 8 | ((0.0001,0.0001,0.1,0.0001,0.0001),) |
+| complex128 | 8 | ((0.0001,0.0001,0.1,0.0001,0.0001),) |
+
+3. **多输出情况**：
+   - `precision_mode` 可为 int 或 list 形式
+   - 单输出：`precision_mode=1`
+   - 多输出相同类型：`precision_mode=1` 或 `precision_mode=[1,1]`
+   - 多输出不同类型：`precision_mode=[1,7]`
+
+**示例**：
+```csv
+# 单输出 float32
+precision_mode=1, precision_tolerance=((0.0001,0.0001,0.1,0.0001,0.0001),)
+
+# 双输出 float32
+precision_mode=1, precision_tolerance=((0.0001,0.0001,0.1,0.0001,0.0001),)
+或
+precision_mode=[1,1], precision_tolerance=((0.0001,0.0001,0.1,0.0001,0.0001),(0.0001,0.0001,0.1,0.0001,0.0001),)
+
+# 双输出 float32/int32
+precision_mode=[1,7], precision_tolerance=((0.0001,0.0001,0.1,0.0001,0.0001),(0,0,0,0,0),)
+
+# 搬运类算子（任意输出类型）
+precision_mode=7, precision_tolerance=((0,0,0,0,0),)
+```
 
 ### 9. 测试设计结果总结
 

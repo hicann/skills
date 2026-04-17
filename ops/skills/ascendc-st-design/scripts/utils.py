@@ -26,6 +26,455 @@ import itertools
 import random
 import math
 
+# ==================== Precision 配置定义 ====================
+
+PRECISION_CONFIG: dict = {
+    "float32": {"precision_mode": 1, "precision_tolerance": ((0.0001, 0.0001, 0.1, 0.0001, 0.0001),)},
+    "float16": {"precision_mode": 1, "precision_tolerance": ((0.001, 0.001, 0.1, 0.001, 0.001),)},
+    "float64": {"precision_mode": 1, "precision_tolerance": ((0.0001, 0.0001, 0.1, 0.001, 0.0001),)},
+    "bfloat16": {"precision_mode": 1, "precision_tolerance": ((0.005, 0.005, 0.1, 0.005, 0.005),)},
+    "float4_e2m1": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "float4_e1m2": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "float8_e4m3fn": {"precision_mode": 10, "precision_tolerance": ((0, 0.001, 1, 0, 0),)},
+    "float8_e5m2": {"precision_mode": 10, "precision_tolerance": ((0, 0.001, 1, 0, 0),)},
+    "float8_e8m0": {"precision_mode": 10, "precision_tolerance": ((0, 0.001, 1, 0, 0),)},
+    "hifloat8": {"precision_mode": 10, "precision_tolerance": ((0, 0.001, 1, 0, 0),)},
+    "int8": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "int16": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "int32": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "int64": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "uint8": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "uint16": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "uint32": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "uint64": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "bool": {"precision_mode": 7, "precision_tolerance": ((0, 0, 0, 0, 0),)},
+    "complex32": {"precision_mode": 1, "precision_tolerance": ((0.001, 0.001, 0.1, 0.001, 0.001),)},
+    "complex64": {"precision_mode": 8, "precision_tolerance": ((0.0001, 0.0001, 0.1, 0.0001, 0.0001),)},
+    "complex128": {"precision_mode": 8, "precision_tolerance": ((0.0001, 0.0001, 0.1, 0.0001, 0.0001),)},
+}
+
+
+def is_copy_operator(md_content: str, operator_name: str = None) -> bool:
+    """
+    根据 md 文档实时判断是否为搬运类算子
+    
+    搬运类算子核心特征：
+    - 只做数据搬运、形状调整、位置变换
+    - 不进行数值计算（无计算公式）
+    - 输入输出数据值完全一致（精度无损）
+    
+    判断逻辑（按优先级）：
+    1. 计算类判定：有计算公式 → 非搬运类
+    2. 计算类判定：功能说明明确提及数值运算 → 非搬运类
+    3. 搬运类判定：功能说明明确提及数据搬运/形状调整 → 搬运类
+    
+    Args:
+        md_content: md 文件完整内容
+        operator_name: 算子名称（可选，如 "aclnnInplaceCopy"）
+    
+    Returns:
+        bool: 是否为搬运类算子
+    
+    Examples:
+        >>> is_copy_operator("接口功能：将src中的元素复制到selfRef张量中", "aclnnInplaceCopy")
+        True
+        >>> is_copy_operator("接口功能：完成加法计算。计算公式：out_i = self_i + alpha * other_i", "aclnnAdd")
+        False
+        >>> is_copy_operator("对tensor的任意维度进行调换", "aclnnPermute")
+        True
+    """
+    if not md_content:
+        return False
+    
+    # Step 1: 提取功能说明部分
+    func_desc = _extract_function_description(md_content)
+    
+    if not func_desc:
+        return False
+    
+    # Step 2: 计算类判定（优先级最高）
+    if _is_compute_operator(func_desc):
+        return False
+    
+    # Step 3: 搬运类判定
+    return _check_copy_operator_features(func_desc, operator_name)
+
+
+def _extract_function_description(md_content: str) -> str:
+    """提取功能说明部分的内容"""
+    start_markers = ["## 功能说明", "功能说明", "接口功能"]
+    end_markers = ["## 函数原型", "## 产品支持", "## 约束说明", "## 调用示例", "## 参数说明"]
+    
+    start_idx = -1
+    for marker in start_markers:
+        idx = md_content.find(marker)
+        if idx != -1:
+            start_idx = idx
+            break
+    
+    if start_idx == -1:
+        # 如果没有明确的"功能说明"标题，取前500字符作为功能描述
+        return md_content[:500]
+    
+    end_idx = len(md_content)
+    for marker in end_markers:
+        idx = md_content.find(marker, start_idx)
+        if idx != -1 and idx < end_idx:
+            end_idx = idx
+    
+    return md_content[start_idx:end_idx]
+
+
+def _is_compute_operator(func_desc: str) -> bool:
+    """
+    判断是否为计算类算子
+    
+    计算类算子特征：
+    1. 核心功能描述中明确提及数值运算
+    2. 核心功能描述中包含数值计算公式（如 out_i = ...）
+    
+    注意：
+    - 参数约束公式（如 start = ...）不代表计算类算子
+    - 形状计算公式（如 out.shape[dim] = ...）不代表计算类算子
+    """
+    core_desc = _extract_core_description(func_desc)
+    
+    if _check_compute_formula_markers(core_desc):
+        return True
+    
+    if _check_compute_keywords_cn(core_desc):
+        return True
+    
+    if _check_compute_keywords_en(core_desc):
+        return True
+    
+    return False
+
+
+def _extract_core_description(func_desc: str) -> str:
+    """提取核心功能描述"""
+    if "- 接口功能" in func_desc:
+        start = func_desc.find("- 接口功能")
+        end = func_desc.find("\n", start)
+        if end == -1:
+            end = len(func_desc)
+        return func_desc[start:end]
+    elif "接口功能" in func_desc:
+        start = func_desc.find("接口功能")
+        end = func_desc.find("\n", start)
+        if end == -1:
+            end = len(func_desc)
+        return func_desc[start:end]
+    return func_desc[:200]
+
+
+def _check_compute_formula_markers(core_desc: str) -> bool:
+    """检查数值计算公式标记"""
+    core_desc_lower = core_desc.lower()
+    compute_formula_markers = [
+        "out_i =", "out_i=",
+        "output = ", "output=",
+        "out = ", "out=",
+        "= exp", "= log", "= sqrt", "= abs",
+        "= sin", "= cos", "= tan",
+        "= relu", "= sigmoid", "= tanh",
+        "+ alpha", "* alpha", "/ alpha",
+        "self_i +", "self_i *", "self_i -", "self_i /",
+    ]
+    
+    for marker in compute_formula_markers:
+        if marker in core_desc or marker.lower() in core_desc_lower:
+            return True
+    return False
+
+
+def _check_compute_keywords_cn(core_desc: str) -> bool:
+    """检查中文计算关键词"""
+    compute_keywords_cn = [
+        "计算", "运算", "加法", "减法", "乘法", "除法",
+        "求和", "求积", "累加", "累乘",
+        "指数", "对数", "幂运算",
+        "三角函数",
+        "矩阵乘法", "矩阵运算",
+        "归一化", "标准化",
+        "激活函数",
+        "卷积",
+        "池化",
+        "比较运算", "逻辑运算",
+        "位运算",
+        "取模", "取余",
+        "取整",
+        "绝对值",
+        "平方根",
+        "倒数",
+        "插值",
+        "线性变换", "仿射变换",
+    ]
+    
+    for keyword in compute_keywords_cn:
+        if keyword in core_desc:
+            return True
+    return False
+
+
+def _check_compute_keywords_en(core_desc: str) -> bool:
+    """检查英文计算关键词"""
+    import re
+    core_desc_lower = core_desc.lower()
+    compute_keywords_en_long = [
+        "matmul", "matrix multiplication",
+        "normalize", "normalization",
+        "relu", "sigmoid", "tanh", "activation",
+        "convolution", "conv",
+        "pooling",
+        "bitwise",
+        "remainder",
+        "floor", "ceil", "round",
+        "sqrt", "square root",
+        "inverse",
+        "interpolate",
+        "linear", "affine",
+        "dot product",
+    ]
+    
+    for keyword in compute_keywords_en_long:
+        pattern = r'\b' + keyword.lower() + r'\b'
+        if re.search(pattern, core_desc_lower):
+            return True
+    return False
+
+
+def _check_copy_operator_features(func_desc: str, operator_name: str = None) -> bool:
+    """
+    检查搬运类算子特征
+    
+    搬运类算子的典型功能描述：
+    - 将A的数据复制/拷贝到B
+    - 对张量进行形状调整/重塑
+    - 调换/排列维度顺序
+    - 提取/切片子张量
+    - 拼接/分割张量
+    - 填充数据
+    - 类型转换（仅转换数据类型，不改变数值）
+    """
+    core_desc = _extract_core_desc_for_copy(func_desc)
+    
+    if _check_copy_keywords(core_desc):
+        return True
+    
+    if _check_copy_patterns(core_desc):
+        return True
+    
+    if _check_copy_operator_name(operator_name):
+        return True
+    
+    return False
+
+
+def _extract_core_desc_for_copy(func_desc: str) -> str:
+    """提取核心功能描述（用于搬运类判断）"""
+    if "- 接口功能" in func_desc:
+        start = func_desc.find("- 接口功能")
+        end = func_desc.find("\n", start)
+        if end == -1:
+            end = len(func_desc)
+        return func_desc[start:end]
+    return func_desc
+
+
+def _check_copy_keywords(core_desc: str) -> bool:
+    """检查搬运类关键词"""
+    core_desc_lower = core_desc.lower()
+    copy_keywords_primary = [
+        "复制", "拷贝", "copy", "clone",
+        "调换", "交换", "transpose", "permute", "swap",
+        "扁平化", "flatten", "reshape",
+        "切片", "slice", "提取", "extract", "截取",
+        "拼接", "concat", "cat", "stack",
+        "分割", "split", "chunk",
+        "填充", "pad", "padding", "补齐",
+        "类型转换", "cast", "format_cast",
+        "广播", "broadcast", "expand",
+        "转置", "排列",
+        "gather", "scatter",
+        "triu", "tril", "diag",
+        "roll", "flip",
+        "重塑", "变形",
+        "narrow", "select", "masked_select",
+    ]
+    
+    for keyword in copy_keywords_primary:
+        if keyword in core_desc or keyword.lower() in core_desc_lower:
+            return True
+    return False
+
+
+def _check_copy_patterns(core_desc: str) -> bool:
+    """检查搬运类语义模式"""
+    copy_patterns = [
+        ("将", "复制到"),
+        ("将", "拷贝到"),
+        ("对", "进行调换"),
+        ("对", "进行交换"),
+        ("对", "进行排列"),
+        ("对", "维度进行"),
+        ("将", "扁平化"),
+        ("将", "reshape"),
+        ("将", "flatten"),
+        ("基于", "切片"),
+        ("基于", "提取"),
+        ("从", "提取"),
+        ("在", "拼接"),
+        ("在", "分割"),
+        ("对", "填充"),
+        ("将", "类型转换"),
+    ]
+    
+    for prefix, suffix in copy_patterns:
+        if prefix in core_desc:
+            idx = core_desc.find(prefix)
+            remaining = core_desc[idx:]
+            if suffix in remaining:
+                return True
+    return False
+
+
+def _check_copy_operator_name(operator_name: str) -> bool:
+    """检查算子名称（辅助判断）"""
+    if not operator_name:
+        return False
+    
+    op_lower = operator_name.lower()
+    copy_name_patterns = [
+        "copy", "clone",
+        "transpose", "permute", "swap",
+        "flatten", "reshape", "view", "squeeze",
+        "slice", "split", "cat", "concat", "chunk", "stack",
+        "cast", "format_cast",
+        "pad", "padding",
+        "gather", "scatter",
+        "broadcast", "expand",
+        "roll", "flip",
+        "triu", "tril", "diag",
+        "narrow", "select",
+        "contiguous",
+    ]
+    
+    for pattern in copy_name_patterns:
+        if pattern in op_lower:
+            return True
+    return False
+
+
+def get_precision_mode_and_tolerance(
+    output_dtypes: List[str],
+    is_copy_op: bool = False
+) -> Tuple[Union[int, List[int]], Tuple]:
+    """
+    根据输出 dtype 生成 precision_mode 和 precision_tolerance
+    
+    Args:
+        output_dtypes: 输出张量的数据类型列表（如 ["float32", "float16"]）
+        is_copy_op: 是否为搬运类算子
+    
+    Returns:
+        Tuple[Union[int, List[int]], Tuple]: 
+            - precision_mode: 可以是 int 或 list
+              - 单输出：int（如 1）
+              - 多输出：list（如 [1, 7]）
+            - precision_tolerance: 元组形式
+              - 单输出：((0.0001, 0.0001, 0.1, 0.0001, 0.0001),)
+              - 多输出：((0.0001, 0.0001, 0.1, 0.0001, 0.0001), (0, 0, 0, 0, 0),)
+    
+    Examples:
+        >>> get_precision_mode_and_tolerance(["float32"], False)
+        (1, ((0.0001, 0.0001, 0.1, 0.0001, 0.0001),))
+        
+        >>> get_precision_mode_and_tolerance(["float32", "int32"], False)
+        ([1, 7], ((0.0001, 0.0001, 0.1, 0.0001, 0.0001), (0, 0, 0, 0, 0),))
+        
+        >>> get_precision_mode_and_tolerance(["float32"], True)
+        (7, ((0, 0, 0, 0, 0),))
+        
+        >>> get_precision_mode_and_tolerance(["float32", "int32"], True)
+        (7, ((0, 0, 0, 0, 0),))
+    """
+    if is_copy_op:
+        # 搬运类算子：所有输出统一使用 precision_mode=7
+        return (7, ((0, 0, 0, 0, 0),))
+    
+    if not output_dtypes:
+        # 默认值
+        return (1, ((0.0001, 0.0001, 0.1, 0.0001, 0.0001),))
+    
+    # 根据 dtype 配置生成 precision_mode 和 precision_tolerance
+    modes = []
+    tolerances = []
+    
+    for dtype in output_dtypes:
+        # 规范化 dtype
+        normalized_dtype = normalize_dtype(dtype)
+        if normalized_dtype is None:
+            normalized_dtype = dtype
+        
+        # 查找配置
+        config = PRECISION_CONFIG.get(normalized_dtype)
+        if config is None:
+            # 如果找不到配置，使用默认值（float32）
+            config = PRECISION_CONFIG.get("float32")
+        
+        modes.append(config["precision_mode"])
+        tolerances.append(config["precision_tolerance"][0])
+    
+    # 根据输出数量决定返回格式
+    if len(output_dtypes) == 1:
+        # 单输出：返回 int
+        return (modes[0], (tolerances[0],))
+    else:
+        # 多输出：返回 list
+        return (modes, tuple(tolerances))
+
+
+def format_precision_output(
+    precision_mode: Union[int, List[int]],
+    precision_tolerance: Tuple
+) -> Tuple[str, str]:
+    """
+    格式化 precision_mode 和 precision_tolerance 为字符串形式
+    
+    Args:
+        precision_mode: precision_mode 值（int 或 list）
+        precision_tolerance: precision_tolerance 值（tuple）
+    
+    Returns:
+        Tuple[str, str]: 格式化后的字符串
+            - precision_mode_str: 如 "1" 或 "[1, 7]"
+            - precision_tolerance_str: 如 "((),)" 或 "((0.0001,0.0001,0.1,0.0001,0.0001),)"
+    
+    Examples:
+        >>> format_precision_output(1, ((0.0001, 0.0001, 0.1, 0.0001, 0.0001),))
+        ('1', '((0.0001,0.0001,0.1,0.0001,0.0001),)')
+        
+        >>> format_precision_output([1, 7], ((0.0001, 0.0001, 0.1, 0.0001, 0.0001), (0, 0, 0, 0, 0)))
+        ('[1,7]', '((0.0001,0.0001,0.1,0.0001,0.0001),(0,0,0,0,0),)')
+    """
+    # 格式化 precision_mode
+    if isinstance(precision_mode, list):
+        precision_mode_str = str(precision_mode).replace(" ", "")
+    else:
+        precision_mode_str = str(precision_mode)
+    
+    # 格式化 precision_tolerance
+    tolerance_parts = []
+    for tolerance_tuple in precision_tolerance:
+        tolerance_str = "(" + ",".join(str(v) for v in tolerance_tuple) + ")"
+        tolerance_parts.append(tolerance_str)
+    
+    precision_tolerance_str = "(" + ",".join(tolerance_parts) + ",)"
+    
+    return (precision_mode_str, precision_tolerance_str)
+
+
 # ==================== dtype 映射定义 ====================
 
 # dtype 标准名称到各种别名的映射

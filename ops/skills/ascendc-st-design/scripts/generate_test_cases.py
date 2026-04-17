@@ -16,14 +16,32 @@
 import argparse
 import sys
 import re
-import pandas as pd
+from typing import Dict, List, Set, Tuple, Any, Optional, Union
+from dataclasses import dataclass
 import yaml
 import random
 import json
 from pathlib import Path
 from copy import deepcopy
-from typing import Dict, List, Set, Tuple, Any, Optional
+import pandas as pd
 from ast import literal_eval
+from utils import (
+    is_copy_operator,
+    get_precision_mode_and_tolerance,
+    format_precision_output,
+    normalize_dtype,
+)
+
+
+@dataclass
+class CaseBuildContext:
+    """用例构建上下文"""
+    param_def: Dict
+    param_names: List[str]
+    aclnn_name: str
+    case_level: str
+    is_copy_op: bool
+    default_output_dtypes: List[str]
 
 
 def main():
@@ -43,10 +61,13 @@ def main():
     # 5. 提取因子值（只提取一次，批量生成时共享）
     all_factor_values = extract_all_factor_values(factors, df)
     
+    # 6. 获取接口文档内容（用于判断搬运类算子）
+    md_content = load_md_content(args, param_def)
+    
     if args.verbose:
         print(f"[INFO] 将生成级别: {', '.join(levels)}\n")
     
-    # 6. 按级别生成用例
+    # 7. 按级别生成用例
     for level in levels:
         if args.verbose:
             print(f"[INFO] {'='*10} 开始生成 {level} 用例 {'='*10}")
@@ -79,17 +100,17 @@ def main():
                 all_factor_values, pairwise_combinations, coverage_info, args.target_count
             )
         
-        # 7. 确定输出文件名
+        # 8. 确定输出文件名
         report_file, case_file = get_output_filenames(
             args.report_output, args.case_output, level, len(levels) > 1
         )
         
-        # 8. 转换格式
+        # 9. 转换格式（传入 md_content）
         aclnn_name = extract_aclnn_name(args)
         selected_df = df.iloc[selected_indices].reset_index(drop=True)
-        case_df = convert_to_standard_format(selected_df, param_def, aclnn_name, level)
+        case_df = convert_to_standard_format(selected_df, param_def, aclnn_name, level, md_content)
         
-        # 9. 保存结果
+        # 10. 保存结果
         # L0: 保存报告和用例; L1: 只保存用例
         if level == 'L0':
             save_results(report, case_df, args.output_dir, report_file, case_file, args.verbose)
@@ -145,6 +166,7 @@ def parse_arguments():
     parser.add_argument('--seed', type=int, help='随机数种子（用于复现L1补齐，仅L1有效）')
     parser.add_argument('--report-output', help='覆盖度报告文件名（默认: {level}_coverage_report.yaml）')
     parser.add_argument('--case-output', help='测试用例文件名（默认: {level}_test_cases.csv）')
+    parser.add_argument('--md-file', help='接口文档路径（用于判断搬运类算子，可选）')
     parser.add_argument('--verbose', action='store_true', help='详细输出模式')
     
     return parser.parse_args()
@@ -236,6 +258,86 @@ def load_data(args):
         print(f"[INFO] 加载因子值: {args.values} ({len(df)}个用例)\n")
     
     return param_def, factors, df
+
+
+def load_md_content(args, param_def):
+    """
+    加载接口文档内容（用于判断搬运类算子）
+    
+    Args:
+        args: 命令行参数
+        param_def: 参数定义
+    
+    Returns:
+        str: md 文件内容（如果找不到则返回 None）
+    """
+    md_file = _resolve_md_file_path(args, param_def)
+    
+    if md_file is None:
+        return None
+    
+    return _read_md_file_content(md_file, args.verbose)
+
+
+def _resolve_md_file_path(args, param_def):
+    """确定 md 文件路径"""
+    if args.md_file:
+        return Path(args.md_file)
+    
+    return _infer_md_file_from_param_def(args.param_def, param_def)
+
+
+def _infer_md_file_from_param_def(param_def_path, param_def):
+    """从参数定义文件路径推断 md 文件路径"""
+    param_def_path = Path(param_def_path)
+    
+    ops_idx = _find_ops_index(param_def_path.parts)
+    if ops_idx is None or ops_idx + 1 >= len(param_def_path.parts):
+        return None
+    
+    operator_name = param_def_path.parts[ops_idx + 1]
+    docs_dir = param_def_path.parents[3] / operator_name / 'docs'
+    
+    return _find_md_file_in_docs(docs_dir, param_def)
+
+
+def _find_ops_index(parts):
+    """在路径中找到 ops 目录的索引"""
+    for i, part in enumerate(parts):
+        if part == 'ops':
+            return i
+    return None
+
+
+def _find_md_file_in_docs(docs_dir, param_def):
+    """在 docs 目录中查找 md 文件"""
+    aclnn_name = param_def.get('aclnn_name', '')
+    
+    if aclnn_name:
+        return docs_dir / f"{aclnn_name}.md"
+    
+    if not docs_dir.exists():
+        return None
+    
+    md_files = list(docs_dir.glob('aclnn*.md'))
+    return md_files[0] if md_files else None
+
+
+def _read_md_file_content(md_file, verbose):
+    """读取 md 文件内容"""
+    if not md_file.exists():
+        return None
+    
+    try:
+        with open(md_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if verbose:
+            print(f"[INFO] 加载接口文档: {md_file}")
+        return content
+    except Exception as e:
+        if verbose:
+            print(f"[WARN] 无法加载接口文档 {md_file}: {e}")
+        return None
 
 
 # ============ L0 相关函数 ============
@@ -939,7 +1041,7 @@ def _process_attributes(row, param_def):
     return attrs
 
 
-def convert_to_standard_format(df, param_def, aclnn_name, case_level):
+def convert_to_standard_format(df, param_def, aclnn_name, case_level, md_content=None):
     """
     转换为标准用例格式
 
@@ -948,63 +1050,182 @@ def convert_to_standard_format(df, param_def, aclnn_name, case_level):
         param_def: 参数定义
         aclnn_name: 算子名称
         case_level: 用例级别（L0/L1）
+        md_content: 接口文档内容（可选，用于判断搬运类算子）
 
     Returns:
         DataFrame: 标准格式的用例表
     """
-    cases = []
-
-    if isinstance(param_def.get('parameters'), list):
-        params_dict = {}
-        for param in param_def['parameters']:
-            param_name = param.get('name')
-            if param_name:
-                params_dict[param_name] = param
-        param_def = params_dict
-
+    param_def = _normalize_param_def(param_def)
     param_names = list(param_def.keys())
+    is_copy_op = is_copy_operator(md_content or "", aclnn_name)
+    default_output_dtypes = _extract_default_output_dtypes(param_def)
+    
+    context = CaseBuildContext(
+        param_def=param_def,
+        param_names=param_names,
+        aclnn_name=aclnn_name,
+        case_level=case_level,
+        is_copy_op=is_copy_op,
+        default_output_dtypes=default_output_dtypes
+    )
+    
+    cases = [
+        _build_single_case(row, idx, context)
+        for idx, row in df.iterrows()
+    ]
+    
+    return _build_result_dataframe(cases)
 
-    for idx, row in df.iterrows():
-        case = {
-            'aclnn_name': aclnn_name,
-            'case_name': f"OP-{aclnn_name}-{case_level}-{idx+1:03d}",
-            'bin_dir': '',
-            'genetic': '',
-            'precision_mode': '1',
-            'precision_tolerance': '((),)',
-            'red_range': ''
-        }
 
-        input_tensors, input_indices = _process_input_tensors(row, param_def, param_names)
-        if input_tensors:
-            case['input_tensor_shape'] = format_list([t['shape'] for t in input_tensors])
-            case['input_tensor_range'] = format_list([t['range'] for t in input_tensors])
-            case['input_tensor_dtype'] = format_quoted_list([t['dtype'] for t in input_tensors])
-            case['input_tensor_format'] = format_quoted_list([t['format'] for t in input_tensors])
-            case['input_tensor_type'] = format_quoted_list([t['type'] for t in input_tensors])
-            case['input_tensor_index'] = str(input_indices)
+def _normalize_param_def(param_def):
+    """规范化参数定义格式"""
+    if not isinstance(param_def.get('parameters'), list):
+        return param_def
+    
+    params_dict = {}
+    for param in param_def['parameters']:
+        param_name = param.get('name')
+        if param_name:
+            params_dict[param_name] = param
+    return params_dict
 
-        output_tensors = _process_output_tensors(row, param_def)
-        if output_tensors:
-            case['output_tensor_shape'] = format_list([t['shape'] for t in output_tensors])
-            case['output_tensor_range'] = ''
-            case['output_tensor_dtype'] = format_quoted_list([t['dtype'] for t in output_tensors])
-            case['output_tensor_format'] = format_quoted_list([t['format'] for t in output_tensors])
-            case['output_tensor_type'] = format_quoted_list([t['type'] for t in output_tensors])
 
-        case.update(_process_attributes(row, param_def))
-        cases.append(case)
+def _extract_default_output_dtypes(param_def):
+    """从参数定义中提取输出张量的 dtype"""
+    output_params = _filter_output_tensor_params(param_def)
+    output_dtypes = []
+    for param_info in output_params:
+        dtype_with_ranges = param_info.get('dtype_with_ranges', [])
+        output_dtypes.extend(_extract_dtypes_from_config(dtype_with_ranges))
+    return output_dtypes
 
+
+def _filter_output_tensor_params(param_def):
+    """筛选输出张量参数"""
+    output_params = []
+    for _, param_info in param_def.items():
+        if param_info.get('io_type') == 'output':
+            param_type = param_info.get('type', '')
+            if param_type in ['aclTensor', 'aclTensorList']:
+                output_params.append(param_info)
+    return output_params
+
+
+def _extract_dtypes_from_config(dtype_configs):
+    """从dtype配置中提取dtype列表"""
+    dtypes = []
+    for config in dtype_configs:
+        dtype = config.get('dtype', '')
+        if dtype:
+            dtypes.append(dtype)
+    return dtypes
+
+
+def _extract_actual_output_dtypes(row, param_def):
+    """从实际用例中提取输出 dtype"""
+    actual_dtypes = []
+    for param_name, param_info in param_def.items():
+        dtype = _get_output_dtype_from_row(row, param_name, param_info)
+        if dtype:
+            actual_dtypes.append(dtype)
+    return actual_dtypes
+
+
+def _get_output_dtype_from_row(row, param_name, param_info):
+    """从行数据中提取单个输出参数的dtype"""
+    if param_info.get('io_type') != 'output':
+        return None
+    param_type = param_info.get('type', '')
+    if param_type not in ['aclTensor', 'aclTensorList']:
+        return None
+    dtype_col = f"{param_name}.dtype"
+    if dtype_col not in row.index:
+        return None
+    dtype_val = row.get(dtype_col, '')
+    if dtype_val and not pd.isna(dtype_val):
+        return str(dtype_val)
+    return None
+
+
+def _build_single_case(row, idx, context: CaseBuildContext):
+    """构建单个用例"""
+    final_output_dtypes = _resolve_final_output_dtypes(row, context.param_def, context.default_output_dtypes)
+    precision_mode_str, precision_tolerance_str = _get_precision_strings(final_output_dtypes, context.is_copy_op)
+    
+    case = _create_base_case(context.aclnn_name, context.case_level, idx, precision_mode_str, precision_tolerance_str)
+    _add_input_tensor_fields(case, row, context.param_def, context.param_names)
+    _add_output_tensor_fields(case, row, context.param_def)
+    case.update(_process_attributes(row, context.param_def))
+    
+    return case
+
+
+def _resolve_final_output_dtypes(row, param_def, default_output_dtypes):
+    """确定最终输出dtype"""
+    actual_output_dtypes = _extract_actual_output_dtypes(row, param_def)
+    return actual_output_dtypes if actual_output_dtypes else default_output_dtypes
+
+
+def _get_precision_strings(output_dtypes, is_copy_op):
+    """获取精度模式字符串"""
+    precision_mode, precision_tolerance = get_precision_mode_and_tolerance(output_dtypes, is_copy_op)
+    return format_precision_output(precision_mode, precision_tolerance)
+
+
+def _create_base_case(aclnn_name, case_level, idx, precision_mode_str, precision_tolerance_str):
+    """创建基础用例结构"""
+    return {
+        'aclnn_name': aclnn_name,
+        'case_name': f"OP-{aclnn_name}-{case_level}-{idx+1:03d}",
+        'bin_dir': '',
+        'genetic': '',
+        'precision_mode': precision_mode_str,
+        'precision_tolerance': precision_tolerance_str,
+        'red_range': ''
+    }
+
+
+def _add_input_tensor_fields(case, row, param_def, param_names):
+    """添加输入张量字段"""
+    input_tensors, input_indices = _process_input_tensors(row, param_def, param_names)
+    if not input_tensors:
+        return
+    
+    case['input_tensor_shape'] = format_list([t['shape'] for t in input_tensors])
+    case['input_tensor_range'] = format_list([t['range'] for t in input_tensors])
+    _add_tensor_dtype_format_type(case, 'input_tensor', input_tensors)
+    case['input_tensor_index'] = str(input_indices)
+
+
+def _add_output_tensor_fields(case, row, param_def):
+    """添加输出张量字段"""
+    output_tensors = _process_output_tensors(row, param_def)
+    if not output_tensors:
+        return
+    
+    case['output_tensor_shape'] = format_list([t['shape'] for t in output_tensors])
+    case['output_tensor_range'] = ''
+    _add_tensor_dtype_format_type(case, 'output_tensor', output_tensors)
+
+
+def _add_tensor_dtype_format_type(case, prefix, tensors):
+    """添加张量的dtype/format/type字段"""
+    case[f'{prefix}_dtype'] = format_quoted_list([t['dtype'] for t in tensors])
+    case[f'{prefix}_format'] = format_quoted_list([t['format'] for t in tensors])
+    case[f'{prefix}_type'] = format_quoted_list([t['type'] for t in tensors])
+
+
+def _build_result_dataframe(cases):
+    """构建结果 DataFrame"""
     fixed_columns = [
         'aclnn_name', 'case_name', 'bin_dir', 'genetic', 'precision_mode',
         'precision_tolerance', 'red_range'
     ]
-
+    
     df_result = pd.DataFrame(cases)
-
     other_columns = [col for col in df_result.columns if col not in fixed_columns]
     all_columns = fixed_columns + other_columns
-
+    
     return df_result[all_columns]
 
 
