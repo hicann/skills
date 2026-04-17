@@ -77,7 +77,7 @@ for a0 in range(2):       ← A 轴 0
 多轴归约时内存往往不连续（如 axes=[0,2] 使得 R 轴散布在内存中）：
 
 ```
-A5:    CopyInWithNddma() — 多维 DMA 自动处理 stride 跳跃
-A2/A3: DataCopyPad 的 blockCount/blockLen/srcStride 参数配置 stride copy
+DAV_3510:    CopyInWithNddma() — 多维 DMA 自动处理 stride 跳跃
+DAV_2201: DataCopyPad 的 blockCount/blockLen/srcStride 参数配置 stride copy
        或外层循环逐 slice 搬运（每次搬连续片段，循环处理不连续间隔）
 ```

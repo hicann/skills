@@ -1,8 +1,8 @@
-# Broadcast - NDDMA Broadcast 分支（A5+）
+# Broadcast - NDDMA Broadcast 分支（DAV_3510）
 
-> **适用场景**: 合轴后多维，A5+ 芯片。搬入时通过 NDDMA 硬件 stride=0 配置自动广播，数据到达 UB 时已是广播后的完整 tile。
+> **适用场景**: 合轴后多维，DAV_3510 芯片。**仅用于 GM→UB 搬入阶段**，通过 NDDMA 硬件 stride=0 配置自动广播，数据到达 UB 时已是广播后的完整 tile。不适用于 UB 内部广播（UB 内部请使用 [动态 UB Broadcast](dynamic-ub-broadcast.md)）。
 >
-> **A2/A3 不支持 NDDMA**，请使用 [UB Broadcast](ub-broadcast.md)。
+> **DAV_2201 不支持 NDDMA**，请使用 [UB Broadcast 静态接口](ub-broadcast.md)。
 
 ---
 
@@ -10,7 +10,7 @@
 
 | 特征 | 说明 |
 |------|------|
-| **芯片要求** | A5+（Ascend 950） |
+| **芯片要求** | DAV_3510（Ascend 950） |
 | **合轴后维度** | > 1 维 |
 | **广播方式** | GM→UB 搬运时，NDDMA 硬件根据 stride=0 自动复制数据 |
 | **与 UB BRC 的区别** | 不需要 UB 内 `Broadcast()` API 调用，搬入即完成广播 |
@@ -178,7 +178,7 @@ __aicore__ inline void Process()
 
 ## 六、与 UB Broadcast 的对比
 
-| 维度 | UB Broadcast (A2/A3) | NDDMA Broadcast (A5+) |
+| 维度 | UB Broadcast (DAV_2201) | NDDMA Broadcast (DAV_3510) |
 |------|---------------------|----------------------|
 | 广播时机 | 搬入后，UB 内调用 Broadcast API | 搬入时，硬件自动完成 |
 | UB 占用 | 需要 src + dst 两块空间 | 只需 dst 空间（搬入即是结果） |
@@ -193,7 +193,7 @@ __aicore__ inline void Process()
 
 | 约束 | 说明 |
 |------|------|
-| **芯片** | 仅 A5+（Ascend 950），A2/A3 不支持 |
+| **芯片** | 仅 DAV_3510（Ascend 950），DAV_2201 不支持 |
 | **NDDMA 最大维度** | 5。超过 5 维需外层循环 |
 | **stride=0 含义** | inputStrides 中 stride=0 的轴，硬件重复读取不推进地址 |
 | **无广播退化** | inputStrides == outputStrides 时退化为 DataCopyPad |

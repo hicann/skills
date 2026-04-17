@@ -33,7 +33,7 @@ Buffer 清单:
 UB 方程:
   tileSize × (T_in × 2 + T_acc)              ← 输入 + Cast
   + A_aligned × T_acc × (K + 1 + 2)          ← K 累加器 + tmp + out双缓冲
-  ≤ UB_SIZE (A2/A3: 192KB)
+  ≤ UB_SIZE (DAV_2201: 192KB)
 
 求解 tileSize:
   fixedBuf = A_aligned × T_acc × (K + 3)
@@ -71,7 +71,7 @@ A_aligned = CeilAlign(A, 8)
 
 额外:
   cmpBuf: A_aligned / 8 (uint8_t)      ← Compare mask
-  注意: A2/A3 上 Select 不支持 int32 dst → 下标存为 float，最后 Cast 为 int32
+  注意: DAV_2201 上 Select 不支持 int32 dst → 下标存为 float，最后 Cast 为 int32
 
 fixedBuf = A_aligned × 4 × 2 + A_aligned × 4 + max(A_aligned/8, 32) + outBuf
 ```
@@ -99,14 +99,14 @@ NCHW 内存布局: x[n,c,h,w] 地址 = n×C×H×W + c×H×W + h×W + w
   同一 (n,c) 的 H×W 个空间位置连续
 
 两种处理方式:
-  方式A（推荐，A2/A3/A5 通用）: 按通道遍历，外层 (n, c)，内层连续搬 H×W
+  方式A（推荐，DAV_2201/DAV_3510 通用）: 按通道遍历，外层 (n, c)，内层连续搬 H×W
     → 每次搬运连续内存（高效），需 C 个独立累加器
     → 适合大多数场景
 
-  方式B（仅 A5）: 用 NDDMA 多维搬运，一次配置自动处理 stride 跳跃
-    → A2/A3 不支持 NDDMA
+  方式B（仅 DAV_3510）: 用 NDDMA 多维搬运，一次配置自动处理 stride 跳跃
+    → DAV_2201 不支持 NDDMA
 
-  方式C（A2/A3）: DataCopyPad 配置 stride 参数
+  方式C（DAV_2201）: DataCopyPad 配置 stride 参数
     → blockCount=R 行数, blockLen=连续片段字节数, srcStride=跳跃步长
     → 适合有规律的 stride 模式
 

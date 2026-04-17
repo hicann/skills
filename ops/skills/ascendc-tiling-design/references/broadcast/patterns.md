@@ -59,9 +59,25 @@ Step 1: 分支判定
   ├─ 合轴后只剩 1 维 → OneDim（纯 Elementwise，可能有标量输入） → [onedim.md]
   │
   └─ 合轴后 > 1 维 → 选择广播方式：
-      ├─ A2/A3 → UB Broadcast（搬入原始数据 → UB 内广播 → 计算） → [ub-broadcast.md]
-      └─ A5+   → NDDMA Broadcast（搬入时硬件自动广播 → 计算）   → [nddma-broadcast.md]
+      ├─ DAV_2201 → UB Broadcast（优先静态接口，不满足对齐约束时用搬运指令方案） → [ub-broadcast.md]
+      │
+      └─ DAV_3510 → 广播发生在哪个阶段？
+          ├─ GM→UB 搬入阶段 → 见下方决策链
+          │
+          └─ UB 内部广播（中间计算结果需要广播）：
+              → UB Broadcast 动态接口（rank 1~9） → [dynamic-ub-broadcast.md]
 ```
+
+### 需要广播的输入的广播方式决策链（DAV_3510）
+
+| 优先级 | 条件 | 选择 |
+|--------|------|------|
+| 1 | 用户强制指定 NDDMA 或 UB BRC | 遵从 |
+| 2 | NLast 场景，尾轴 >= dcache/2 | UB BRC → [dynamic-ub-broadcast.md] |
+| 3 | dtype 为 INT8/FP16/BF16 且尾轴 32B 对齐 | UB BRC → [dynamic-ub-broadcast.md] |
+| 4 | 其他 | NDDMA → [nddma-broadcast.md] |
+
+**NLast** = 尾轴不需要广播（stride≠0），但非尾轴需要广播（stride=0）。尾轴数据量大时 NDDMA 反复读会刷 dcache，不如 UB 内 Broadcast API。
 
 ---
 
@@ -69,30 +85,71 @@ Step 1: 分支判定
 
 以下规则适用于所有 Broadcast 分支。
 
-**GM↔UB 数据搬运必须使用 DataCopyPad**：与 Reduction 相同。
+**变量说明**：
 
-**UB 切分公式**：
+| 变量 | 含义 |
+|------|------|
+| `dims[i]` | 合轴后输出 shape 的第 i 维大小 |
+| `shapeLen` | 合轴后的总维度数 |
+| `ubSize` | UB 总容量（字节） |
+| `extraSize` | 额外预留空间（字节），如 tmpBuffer 等 |
+| `bufferNum` | 计算图中存活 buffer 数量（输入 + 输出 + 中间） |
+| `maxDtypeBits` | 计算图中最大数据类型的位宽 |
+| `minDtypeBits` | 计算图中最小数据类型的位宽 |
+
+**UB 切分**：从最内轴向外累乘，找到第一个放不下的轴作为 ubSplitAxis：
+```
+curProduct = 1
+ubSplitAxis = 0
+allFit = true
+for i = shapeLen-1 downto 0:
+    curProduct *= dims[i]
+    if curProduct > maxElemNum:
+        ubSplitAxis = i
+        curProduct /= dims[i]
+        allFit = false
+        break
+
+if allFit:                              # 所有维度都放得进 UB，ubSplitAxis 保持初始值 0
+    curProduct /= dims[0]               # 在最外维上切分
+
+if shapeLen == 1:                       # 单维场景（通常已被 OneDim 拦截）
+    ubFormer = maxElemNum
+else:
+    ubFormer = maxElemNum / curProduct
+
+ubOuter = ceil(dims[ubSplitAxis] / ubFormer)
+ubTail  = dims[ubSplitAxis] - (ubOuter-1) * ubFormer
+```
+
+其中 maxElemNum 计算：
 ```
 maxElemNum = (ubSize - extraSize) * 8 / (bufferNum * maxDtypeBits)
 maxElemNum = floor_align(maxElemNum, 256 * 8 / minDtypeBits)
-
-从最内轴向外累乘输出 dims，找到放不下的轴 → ubSplitAxis
-ubFormer = maxElemNum / (ubSplitAxis 之后所有轴乘积)
-ubOuter = ceil(dims[ubSplitAxis] / ubFormer)
-ubTail = dims[ubSplitAxis] % ubFormer（0 → ubFormer）
 ```
 
-**多核切分**：
+**多核切分**：把 ubSplitAxis 及其外层轴展平，均分给多核：
 ```
 fusedProduct = ubOuter × (ubSplitAxis 之前所有轴乘积)
-blockFormer = ceil(fusedProduct / coreNum)
-blockNum = ceil(fusedProduct / blockFormer)
-blockTail = fusedProduct - (blockNum - 1) * blockFormer
+blockFormer  = ceil(fusedProduct / coreNum)
+blockNum     = ceil(fusedProduct / blockFormer)
+blockTail    = fusedProduct - (blockNum - 1) * blockFormer
 ```
+
+核利用率不足时（`blockNum < coreNum`），循环缩小 maxElemNum（每次减 CACHE_LINE），重算 ubFormer/ubOuter/fusedProduct，直到能喂满更多核。
 
 **对齐**：
 - OneDim: 128B (CACHE_LINE) 对齐
 - 多维: 256B (REPEAT) 对齐
+
+**NDDMA 超过 5 轴时的处理（DAV_3510）**：
+```
+axesAfterSplit = shapeLen - ubSplitAxis
+
+≤ 5 → WITHOUT_LOOP：一次 NDDMA 调用完成（API 为 DataCopy<T, 5, config>）
+> 5 → WITH_LOOP：最内 5 轴交给 NDDMA，外层轴 Kernel for-loop 遍历
+```
+WITH_LOOP 模式下 NDDMA config 不变，只有 GM/UB 偏移随外层循环变化。详见 [nddma-broadcast.md](nddma-broadcast.md)。
 
 ---
 
@@ -101,5 +158,6 @@ blockTail = fusedProduct - (blockNum - 1) * blockFormer
 | 主题 | 文档 |
 |------|------|
 | OneDim 分支（合轴后单维） | [onedim.md](onedim.md) |
-| UB Broadcast 分支（合轴后多维，A2/A3） | [ub-broadcast.md](ub-broadcast.md) |
-| NDDMA Broadcast 分支（合轴后多维，A5+） | [nddma-broadcast.md](nddma-broadcast.md) |
+| UB Broadcast（DAV_2201，静态接口 + 搬运指令 fallback） | [ub-broadcast.md](ub-broadcast.md) |
+| UB Broadcast 动态接口（DAV_3510，rank 1~9） | [dynamic-ub-broadcast.md](dynamic-ub-broadcast.md) |
+| NDDMA Broadcast（DAV_3510，GM→UB 硬件广播） | [nddma-broadcast.md](nddma-broadcast.md) |

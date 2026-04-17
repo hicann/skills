@@ -21,12 +21,12 @@
 
 | 约束 | 说明 |
 |------|------|
-| **索引类型** | A2/A3 上 Select 不支持 int32 dst，索引必须用 float 存储，最后 Cast 为 int32 |
+| **索引类型** | DAV_2201 上 Select 不支持 int32 dst，索引必须用 float 存储，最后 Cast 为 int32 |
 | **索引范围** | float32 精确表示 [0, 2^24] 整数；half <= 65535 |
 | **多个极值** | 返回**第一个**极值的索引（LE/GE 方案自动保证） |
 | **Compare 256 字节对齐** | count 个元素占 256 字节对齐（float: 64 元素倍数），**非** 32 字节 |
 | **DataCopyPad rightPadding** | rightPadding <= 32 字节（最多 8 个 float），大 padding 量不能用此参数 |
-| **Select 8K 预留** | A2/A3 上模式 1/2 需预留 8K UB，框架通常自动管理 |
+| **Select 8K 预留** | DAV_2201 上模式 1/2 需预留 8K UB，框架通常自动管理 |
 
 ---
 
@@ -103,11 +103,11 @@ ArgMaxV1(dst_indice, dst_values, src, batchSize, R_slice);
 标准 ARA Reduction 用 `Pattern::Reduce::RA` 一次归约整个 `(R, alignedCols)` 矩阵。
 索引跟踪无法使用 Pattern API（无索引输出），改用逐行 `Compare+Select` 迭代。
 
-### API 约束（A2/A3）
+### API 约束（DAV_2201）
 
 | 约束项 | 具体限制 | 影响 |
 |--------|---------|------|
-| **Select dst 类型** | A2/A3 仅支持 half/float，**不支持 int32** | 索引必须用 float 存储，输出前 Cast 为 int32 |
+| **Select dst 类型** | DAV_2201 仅支持 half/float，**不支持 int32** | 索引必须用 float 存储，输出前 Cast 为 int32 |
 | **Compare count 对齐** | count 个元素所占空间必须 **256 字节对齐**（float: 64 元素倍数） | a0Aligned = ceil(A0/64)*64，非 32 字节对齐 |
 
 ### 推荐方案：LE 反转 + TENSOR_SCALAR
