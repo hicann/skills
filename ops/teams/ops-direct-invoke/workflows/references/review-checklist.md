@@ -81,7 +81,7 @@ AscendC::Sub<float>(xLocal, xLocal, tmpLocal, totalSize);
 
 **前置条件**：`environment.json` 中 `npu.available` 为 true。NPU 不可用时跳过此项，在 REVIEW.md 中标注「上板性能验证因 NPU 不可用而跳过」。
 
-**独立采集**：调用 `ascendc-op-profiling`，独立执行 msprof op 采集，不信任 Developer 的自报性能数据。
+**独立采集**：调用 `ops-profiling`，独立执行 msprof op 采集，不信任 Developer 的自报性能数据。
 
 **审查要点**：
 1. 实际 Task Duration 与理论耗时对比

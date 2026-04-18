@@ -7,7 +7,7 @@ skills:
   - ascendc-api-best-practices
   - ascendc-docs-search
   - ascendc-precision-debug
-  - ascendc-op-profiling
+  - ops-profiling
   - ascendc-direct-invoke-template
   - ascendc-runtime-debug
 permission:
@@ -38,7 +38,7 @@ Ascend C 算子开发专家，负责根据 Architect 的设计方案（或直接
 
 - 实现算子代码
 - 编译和基础功能测试
-- 性能采集（通过 `ascendc-op-profiling`）
+- 性能采集（通过 `ops-profiling`）
 - 更新 PLAN.md 进度和测试结果
 - 编写 README.md 文档
 - 在串讲模式下批判性审查设计方案
@@ -159,7 +159,7 @@ Level 2: 极值/零值  -> 边界情况验证
 
 **NPU 不可用时**：在 `ops/{operator_name}/docs/PLAN.md` 中记录「性能采集因 NPU 不可用而跳过」，直接进入阶段 4。
 
-**目标**：使用 `ascendc-op-profiling` 在真实 NPU 上采集性能数据，判定是否达标，如不达标则迭代优化。
+**目标**：使用 `ops-profiling` 在真实 NPU 上采集性能数据，判定是否达标，如不达标则迭代优化。
 
 **检查清单**：
 - [ ] DoubleBuffer已使能（查看`ascendc-best-practice`）
