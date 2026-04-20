@@ -314,9 +314,9 @@ collect_env_info() {
     NPU_DEVICE_COUNT=0
     if command -v npu-smi &> /dev/null; then
         if npu-smi info &> /dev/null; then
-            NPU_DEVICE_COUNT=$(npu-smi info -t board 2>/dev/null | grep -c "Board ID" || echo "1")
-            if [ "$NPU_DEVICE_COUNT" -le 0 ]; then
-                NPU_DEVICE_COUNT=1
+            NPU_DEVICE_COUNT=$(npu-smi info -l 2>/dev/null | grep "Total Count" | sed 's/.*: //' | tr -d '[:space:]')
+            if [ -z "$NPU_DEVICE_COUNT" ] || ! [[ "$NPU_DEVICE_COUNT" =~ ^[0-9]+$ ]]; then
+                NPU_DEVICE_COUNT=$(npu-smi info -l 2>/dev/null | grep -c "NPU ID" || echo "0")
             fi
             success "NPU 设备可用，检测到 ${NPU_DEVICE_COUNT} 张卡"
             ENV_DATA[npu_available]="true"
