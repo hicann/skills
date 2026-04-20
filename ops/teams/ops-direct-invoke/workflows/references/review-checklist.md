@@ -91,7 +91,7 @@ AscendC::Sub<float>(xLocal, xLocal, tmpLocal, totalSize);
 5. 头开销占比是否 <10%
 
 **与 Developer 性能数据对比**：
-- 读取 `ops/{operator_name}/docs/perf/` 目录下 Developer 的采集数据
+- 读取 `operators/{operator_name}/docs/perf/` 目录下 Developer 的采集数据
 - 对比 Reviewer 独立采集的结果，差异过大需在 REVIEW.md 中说明
 
 **评分依据**：上板性能数据作为维度 4（性能优化 20 分）中 4.5 计算效率与上板性能的重要评分参考。
@@ -245,22 +245,22 @@ AscendC::Sub<float>(xLocal, xLocal, tmpLocal, totalSize);
 
 ```bash
 # 检查 EnQue/DeQue 配对
-grep -c "EnQue" ops/{operator_name}/*.asc
-grep -c "DeQue" ops/{operator_name}/*.asc
+grep -c "EnQue" operators/{operator_name}/*.asc
+grep -c "DeQue" operators/{operator_name}/*.asc
 
 # 检查 AllocTensor/FreeTensor 配对
-grep -c "AllocTensor" ops/{operator_name}/*.asc
-grep -c "FreeTensor" ops/{operator_name}/*.asc
+grep -c "AllocTensor" operators/{operator_name}/*.asc
+grep -c "FreeTensor" operators/{operator_name}/*.asc
 
 # 检查 Copy 用于 GM 操作（错误）
-grep -n "Copy.*GlobalTensor\|Copy.*GM" ops/{operator_name}/*.asc
+grep -n "Copy.*GlobalTensor\|Copy.*GM" operators/{operator_name}/*.asc
 
 # 检查缺少 PipeBarrier
-grep -n "DataCopy\|EnQue\|DeQue" ops/{operator_name}/*.asc | head -20
+grep -n "DataCopy\|EnQue\|DeQue" operators/{operator_name}/*.asc | head -20
 
 # 统计 PipeBarrier 总数（冗余率分析前置）
-grep -c "PipeBarrier" ops/{operator_name}/*.asc
+grep -c "PipeBarrier" operators/{operator_name}/*.asc
 
 # 列出所有 PipeBarrier 及上下文（用于逐项依赖分析）
-grep -n -B 3 "PipeBarrier" ops/{operator_name}/*.asc
+grep -n -B 3 "PipeBarrier" operators/{operator_name}/*.asc
 ```

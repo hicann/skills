@@ -11,6 +11,10 @@ permission:
 
 # CANNBot
 
+## 工作目录
+
+本项目工作目录为当前启动目录。所有相对路径均基于此目录。
+
 ## 核心原则
 
 ### 身份
@@ -129,7 +133,7 @@ Step 7: 完成汇报
 
 **执行步骤**：
 
-1. 运行项目初始化脚本（如 `ops/{operator_name}/` 已存在则跳过）：
+1. 运行项目初始化脚本（如 `operators/{operator_name}/` 已存在则跳过）：
    ```bash
    bash workflows/scripts/init_operator_project.sh {operator_name}
    ```
@@ -137,7 +141,7 @@ Step 7: 完成汇报
    ```bash
    bash workflows/scripts/verify_environment.sh {operator_name}
    ```
-3. 读取 `ops/{operator_name}/docs/environment.json`，确认关键字段：
+3. 读取 `operators/{operator_name}/docs/environment.json`，确认关键字段：
    - `validation.all_passed`：是否全部检查通过
    - `cann.version`：CANN 版本号
    - `compiler.bisheng_path`：编译器路径
@@ -152,7 +156,7 @@ Step 7: 完成汇报
 
 **触发条件**：environment.json 存在且 `validation.all_passed` 为 true
 **调用模板**：[Step 2](workflows/task-prompts.md#step-2设计) — 读取此链接的完整内容作为 prompt
-**完成判定**：`ops/{operator_name}/docs/DESIGN.md` 和 `ops/{operator_name}/docs/PLAN.md` 都存在；如果只输出了单文件，重新调用 architect 要求拆分
+**完成判定**：`operators/{operator_name}/docs/DESIGN.md` 和 `operators/{operator_name}/docs/PLAN.md` 都存在；如果只输出了单文件，重新调用 architect 要求拆分
 
 #### Step 2.5：设计串讲（Architect ↔ Developer 质量关卡）
 
@@ -183,13 +187,13 @@ Step 7: 完成汇报
 
 **触发条件**：设计完成（Step 2 + 2.5 通过）
 **调用模板**：[Step 3](workflows/task-prompts.md#step-3开发) — 读取此链接的完整内容作为 prompt
-**完成判定**：Developer 返回开发概要，代码文件存在于 `ops/{operator_name}/`
+**完成判定**：Developer 返回开发概要，代码文件存在于 `operators/{operator_name}/`
 
 #### Step 4：审查
 
 **触发条件**：Developer 完成开发
 **调用模板**：[Step 4](workflows/task-prompts.md#step-4审查) — 读取此链接的完整内容作为 prompt
-**完成判定**：`ops/{operator_name}/docs/REVIEW.md` 文件存在且有审查结果（PASS/FAIL/PASS WITH NOTES）
+**完成判定**：`operators/{operator_name}/docs/REVIEW.md` 文件存在且有审查结果（PASS/FAIL/PASS WITH NOTES）
 
 #### Step 5：修复循环
 
@@ -204,7 +208,7 @@ Step 7: 完成汇报
 
 **触发条件**：审查通过（PASS 或 PASS WITH NOTES），且 `environment.json` 中 `npu.available` 为 true
 **调用模板**：[Step 6](workflows/task-prompts.md#step-6性能验收) — 读取此链接的完整内容作为 prompt
-**完成判定**：性能数据已归档（`ops/{operator_name}/docs/perf/round_NNN/` 至少存在一轮），达标判定已记录在 PLAN.md 中
+**完成判定**：性能数据已归档（`operators/{operator_name}/docs/perf/round_NNN/` 至少存在一轮），达标判定已记录在 PLAN.md 中
 **NPU 不可用时**：跳过性能验收，在最终汇报中标注「性能验收因 NPU 不可用而跳过」，直接进入 Step 7
 
 #### Step 7：完成

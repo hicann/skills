@@ -167,7 +167,7 @@ Host 侧代码仅包含：Tiling 参数计算、内存分配/释放、Kernel 启
 
 验证命令：
 ```bash
-python workflows/scripts/verify_cmake_config.py ops/{operator_name}/CMakeLists.txt
+python workflows/scripts/verify_cmake_config.py operators/{operator_name}/CMakeLists.txt
 ```
 
 ### 2.2 Tiling 计算位置
@@ -209,7 +209,7 @@ make
 ```bash
 bash workflows/scripts/init_operator_project.sh {operator_name}
 bash workflows/scripts/verify_environment.sh {operator_name}
-python workflows/scripts/verify_cmake_config.py ops/{operator_name}/CMakeLists.txt
+python workflows/scripts/verify_cmake_config.py operators/{operator_name}/CMakeLists.txt
 ```
 
 ---

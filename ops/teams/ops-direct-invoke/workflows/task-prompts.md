@@ -16,11 +16,11 @@
 请为以下算子设计方案：
 - 算子名称：{operator_name}
 - 需求描述：{用户需求}
-- 环境信息：ops/{operator_name}/docs/environment.json
+- 环境信息：operators/{operator_name}/docs/environment.json
 
 【输出】
-- 技术设计：ops/{operator_name}/docs/DESIGN.md
-- 开发计划：ops/{operator_name}/docs/PLAN.md
+- 技术设计：operators/{operator_name}/docs/DESIGN.md
+- 开发计划：operators/{operator_name}/docs/PLAN.md
 
 【验收标准】
 - DESIGN.md 和 PLAN.md 都已创建
@@ -42,13 +42,13 @@
   "prompt": "
 请以「设计串讲模式」审查以下算子的设计方案：
 - 算子名称：{operator_name}
-- 技术设计：ops/{operator_name}/docs/DESIGN.md
-- 开发计划：ops/{operator_name}/docs/PLAN.md
+- 技术设计：operators/{operator_name}/docs/DESIGN.md
+- 开发计划：operators/{operator_name}/docs/PLAN.md
 
 【重点审查章节】DESIGN.md 中重点读 §1（算子设计：API 映射、数据流）和 §2.4（伪代码），审查设计逻辑和可实现性。§0（概述）、§4（实施计划）、§5（确认清单）可跳过。
 
 【输出】
-- 请将质疑清单输出到 ops/{operator_name}/docs/WALKTHROUGH.md。
+- 请将质疑清单输出到 operators/{operator_name}/docs/WALKTHROUGH.md。
 
 【推荐 Skill】
 - /ascendc-api-best-practices — 质疑 API 选择时查阅确认可行性
@@ -74,7 +74,7 @@
 | 5 | 精度风险 | 是否有未考虑的精度损失点？混合精度策略是否完整？除零保护是否到位？ |
 
 【WALKTHROUGH.md 输出格式】
-输出到 ops/{operator_name}/docs/WALKTHROUGH.md，使用以下结构：
+输出到 operators/{operator_name}/docs/WALKTHROUGH.md，使用以下结构：
 
 ## 设计串讲
 
@@ -112,19 +112,19 @@
   "prompt": "
 请以「串讲回应模式」回应 Developer 对设计方案的质疑：
 - 算子名称：{operator_name}
-- 技术设计：ops/{operator_name}/docs/DESIGN.md
-- 串讲质疑：ops/{operator_name}/docs/WALKTHROUGH.md
+- 技术设计：operators/{operator_name}/docs/DESIGN.md
+- 串讲质疑：operators/{operator_name}/docs/WALKTHROUGH.md
 请逐一回应质疑，并根据需要更新 DESIGN.md。
 
 【输出】
-- 更新 ops/{operator_name}/docs/WALKTHROUGH.md（添加回应）
-- 如需修改，更新 ops/{operator_name}/docs/DESIGN.md
+- 更新 operators/{operator_name}/docs/WALKTHROUGH.md（添加回应）
+- 如需修改，更新 operators/{operator_name}/docs/DESIGN.md
 
 【验收标准】
 - 每个质疑都有回应（采纳 / 保留原设计 + 理由）
 
 【回应执行步骤】
-1. 读取 ops/{operator_name}/docs/WALKTHROUGH.md ## 质疑清单
+1. 读取 operators/{operator_name}/docs/WALKTHROUGH.md ## 质疑清单
 2. 逐一评估每个问题，判定回应类别：
 
 | 回应类别 | 含义 | 操作 |
@@ -171,8 +171,8 @@
   "subagent_type": "ascendc-kernel-developer",
   "prompt": "
 请先阅读以下文件：
-- ops/{operator_name}/docs/DESIGN.md — 技术设计（重点读 §1.2 API 映射、§1.5 Buffer 规划、§2.4 伪代码）
-- ops/{operator_name}/docs/PLAN.md — 开发计划（请在开发中持续更新）
+- operators/{operator_name}/docs/DESIGN.md — 技术设计（重点读 §1.2 API 映射、§1.5 Buffer 规划、§2.4 伪代码）
+- operators/{operator_name}/docs/PLAN.md — 开发计划（请在开发中持续更新）
 然后开始开发。
 
 【第一步：基于模板搭建工程骨架】
@@ -193,8 +193,8 @@ Step D: 添加测试用例和精度验证 → 运行通过
 - 编码规范与审查清单：workflows/development-guide.md
 
 【输出】
-- 算子代码：ops/{operator_name}/
-- 更新进度：ops/{operator_name}/docs/PLAN.md
+- 算子代码：operators/{operator_name}/
+- 更新进度：operators/{operator_name}/docs/PLAN.md
 
 【验收标准】
 - 编译成功（cmake .. && make）
@@ -217,13 +217,13 @@ Step D: 添加测试用例和精度验证 → 运行通过
   "prompt": "
 请审查以下算子代码：
 - 算子名称：{operator_name}
-- 代码路径：ops/{operator_name}/
-- 设计文档：ops/{operator_name}/docs/DESIGN.md
-- 环境信息：ops/{operator_name}/docs/environment.json
+- 代码路径：operators/{operator_name}/
+- 设计文档：operators/{operator_name}/docs/DESIGN.md
+- 环境信息：operators/{operator_name}/docs/environment.json
 - 审查清单：workflows/development-guide.md
 
 【输出】
-- 审查报告：ops/{operator_name}/docs/REVIEW.md
+- 审查报告：operators/{operator_name}/docs/REVIEW.md
 
 【推荐 Skill】
 - /ascendc-docs-search — 验证 API 约束、查找官方示例对照
@@ -254,12 +254,12 @@ Step D: 添加测试用例和精度验证 → 运行通过
   "prompt": "
 请根据审查报告修复代码：
 - 算子名称：{operator_name}
-- 审查报告：ops/{operator_name}/docs/REVIEW.md
-- 设计文档：ops/{operator_name}/docs/DESIGN.md
+- 审查报告：operators/{operator_name}/docs/REVIEW.md
+- 设计文档：operators/{operator_name}/docs/DESIGN.md
 
 【输出】
-- 修复后的代码：ops/{operator_name}/
-- 更新进度：ops/{operator_name}/docs/PLAN.md
+- 修复后的代码：operators/{operator_name}/
+- 更新进度：operators/{operator_name}/docs/PLAN.md
 
 【推荐 Skill】
 - /ascendc-precision-debug — 遇到以下症状时使用：输出全为0、输出随机错误值、核心超时/挂起、Cast后数据错误、非对齐数据失败、精度不达标
@@ -286,11 +286,11 @@ Step D: 添加测试用例和精度验证 → 运行通过
   "prompt": "
 请执行性能采集和验收：
 - 算子名称：{operator_name}
-- 算子目录：ops/{operator_name}/
+- 算子目录：operators/{operator_name}/
 
 【输出】
-- 性能数据：ops/{operator_name}/docs/perf/round_NNN/
-- 性能摘要：ops/{operator_name}/docs/perf/round_NNN/summary.txt
+- 性能数据：operators/{operator_name}/docs/perf/round_NNN/
+- 性能摘要：operators/{operator_name}/docs/perf/round_NNN/summary.txt
 
 【推荐 Skill】
 - /ops-profiling — msprof op 采集、CSV 指标解读、达标判定

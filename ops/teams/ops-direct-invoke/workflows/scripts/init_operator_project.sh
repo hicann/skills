@@ -24,7 +24,7 @@ if [ -z "$OPERATOR_NAME" ]; then
 fi
 
 # 设置项目根目录
-PROJECT_ROOT="ops/${OPERATOR_NAME}"
+PROJECT_ROOT="operators/${OPERATOR_NAME}"
 
 echo "================================================================"
 echo "算子项目初始化"
@@ -84,7 +84,7 @@ ${OPERATOR_NAME}/
 ├── test/           # 测试数据
 ├── ${OPERATOR_NAME}.asc  # Kernel 实现（待创建）
 ├── CMakeLists.txt  # 构建脚本（待创建）
-├── gen_golden.py   # Golden 数据生成（待创建）
+├── gen_data.py  # Golden 数据生成（待创建）
 └── run.sh          # 运行脚本（待创建）
 \`\`\`
 

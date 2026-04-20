@@ -92,10 +92,10 @@ opencode
 
 ### 产出物示例
 
-算子直调模式下，CANNBot 会在 `ops/{operator}/` 目录下生成以下文件：
+算子直调模式下，CANNBot 会在 `operators/{operator}/` 目录下生成以下文件：
 
 ```
-ops/add_custom/
+operators/add_custom/
 ├── CMakeLists.txt           # 编译配置
 ├── build.sh                 # 编译脚本
 ├── run.sh                   # 运行脚本

@@ -24,7 +24,7 @@ if [ -z "$OPERATOR_NAME" ]; then
 fi
 
 # 设置保存路径
-SAVE_DIR="ops/${OPERATOR_NAME}/docs"
+SAVE_DIR="operators/${OPERATOR_NAME}/docs"
 SAVE_FILE="${SAVE_DIR}/environment.json"
 
 # 检查项目是否已初始化
