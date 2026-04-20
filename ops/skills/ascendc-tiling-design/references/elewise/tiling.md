@@ -176,3 +176,40 @@ TilingData ComputeTiling(int64_t dim0, int64_t elemBytes, int64_t ubSize,
 | **跨核偏移** | 当前核 GM 偏移 = `blockFormer * blockIdx` | `CalcBlockOffset()` |
 
 ---
+
+## 六、dtype 分支：FP16/BF16 升精度（Add/Sub）的 UB 预算
+
+**何时启用**：patterns.md 的 Step 2 判定命中升精度分支时使用。
+
+### 1. Buffer 规划差异
+
+升精度分支在原 dtype Queue 之外，额外引入 **K 份 `ubFormer * sizeof(float)` 的 FP32 中间 Buffer**。K 由 API 层的别名约束决定，tiling 阶段只需将其作为参数代入 UB 预算。
+
+| 项 | 原 dtype 直算 | 升精度分支 |
+|---|--------------|-----------|
+| 输入/输出 Buffer dtype | 原 dtype（half/bf16） | 原 dtype（不变） |
+| FP32 中间 Buffer 份数 | — | **K**（由 API 别名约束给出） |
+| 单份 FP32 中间大小 | — | `ubFormer * sizeof(float)` |
+| 总 UB 占用 | `bufferNum * ubFormer * elemBytes` | `bufferNum * ubFormer * elemBytes + K * ubFormer * sizeof(float)` |
+
+### 2. ubFormer 计算调整
+
+升精度分支下 `bufferDivisor` 需同时包含半精度 Queue 和 FP32 中间 Buffer 两部分：
+
+```cpp
+// 原直算分支
+bufferDivisor = bufferNum * elemBytes;
+
+// 升精度分支：bufferNum 份半精度 + K 份 FP32
+bufferDivisor = bufferNum * elemBytes + K * sizeof(float);
+
+maxElemNum = (ubSize * 8) / bufferDivisor;
+alignFactor = ALIGN_256 * 8 / elemBytes;       // 对齐仍按输入 dtype
+ubFormer = (maxElemNum / alignFactor) * alignFactor;
+```
+
+K 的取值取决于 Compute 阶段选用 API 是否支持 dst/src 别名，该参数由 API 实现细节给出后回填。
+
+> 升精度分支不新增 TilingData 字段，Kernel 侧按 dtype 模板参数静态选择分支即可。具体 Cast/Add/Sub 调用、RoundMode、别名写法等属 API 实现细节，tiling 阶段不涉及。
+
+---

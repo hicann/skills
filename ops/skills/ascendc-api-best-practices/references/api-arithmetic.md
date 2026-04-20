@@ -15,6 +15,11 @@
   - [方案对比-1](#方案对比-1)
   - [核心原理](#核心原理)
   - [分批处理](#分批处理)
+- [场景3：半精度加减法精度优化](#场景3半精度加减法精度优化)
+  - [问题根因](#问题根因)
+  - [默认策略](#默认策略)
+  - [标准范式](#标准范式)
+  - [Kernel 集成要点](#kernel-集成要点)
 - [性能对比](#性能对比)
 - [适用 API](#适用-api)
 - [常见错误](#常见错误)
@@ -246,6 +251,55 @@ for (uint32_t batch = 0; batch < totalBatches; batch++) {
 
 ---
 
+## 场景3：半精度加减法精度优化
+
+### 问题根因
+
+半精度（FP16=10 位尾数，BF16=7 位）两数量级差异大时会"**大数吃小数**"，Add 和 Sub 面临相同风险：
+
+```
+a = 1024.0, b = 0.0625
+  Add<half>  : 1024.0     ← b 被丢弃     Sub<half>  : 1024.0     ← b 被丢弃
+  Add<float> : 1024.0625  ← 正确         Sub<float> : 1023.9375  ← 正确
+```
+
+临界比值（显著退化阈值）：FP16 ≈ 2¹⁰=1024，BF16 ≈ 2⁷=128；完全丢失阈值约 2×（尾数隐含 1 位）。累加 N 次后阈值除以 √N。
+
+### 默认策略
+
+**spec 未明确"输入同量级"时一律升 FP32**。通用算子调用方分布未知，一旦遇到残差/累加/归一化/量化反量化即不可控。Add 和 Sub 适用同一规则，BF16 和 FP16 仅临界比值不同（见下）。
+
+| spec 声明输入同量级？ | 推荐实现 | 理由 |
+|---------------------|---------|------|
+| 否（默认） | `Cast → Add/Sub<float>(in-place) → Cast` | 覆盖所有分布 |
+| 是（mask 叠加、已归一化概率相加等） | 直接 `Add/Sub<half>` | 两输入本身仅 10/7 位精度，单次运算不引入额外损失；无 √N 累加放大 |
+
+### 标准范式
+
+`Add/Sub<float>(dst, src0, src1)` 支持 dst 与 src 别名，仅需 **K=2 份** FP32 临时空间（dst 复用 src0Fp32）：
+
+```cpp
+// Get<T>(len) 的 len 是元素数；偏移用 tensor[N]
+auto src0Fp32 = tmpBuf.Get<float>(TILE);
+auto src1Fp32 = src0Fp32[TILE];
+
+// half → float 用 CAST_NONE；float → half 用 CAST_ROUND
+AscendC::Cast<float, half>(src0Fp32, src0, AscendC::RoundMode::CAST_NONE, count);
+AscendC::Cast<float, half>(src1Fp32, src1, AscendC::RoundMode::CAST_NONE, count);
+AscendC::Add<float>(src0Fp32, src0Fp32, src1Fp32, count);   // in-place；Sub 同理
+AscendC::Cast<half, float>(dst, src0Fp32, AscendC::RoundMode::CAST_ROUND, count);
+```
+
+代价：+3 条指令（共 4 条：2 Cast↑ + 1 Add/Sub + 1 Cast↓），+K×count×sizeof(float) UB。BF16 路径将 `half` 替换为 `bfloat16_t` 即可。
+
+> **API 别名约束决定 K**：`Add/Sub<float>` 在 Vector 上支持 dst 与 src 别名，故 K=2；Reduce 类 API 禁止 dst==tmpBuffer，不可类比。
+
+### Kernel 集成要点
+
+> 升精度路径需要 K=2 份 FP32 临时 Buffer，Add/Sub<float> 支持 dst/src 别名故 dst 复用 src0Fp32。精度转换 RoundMode 详见 [api-precision.md](api-precision.md)。
+
+---
+
 ## 性能对比
 
 ### 标量操作（单行）
@@ -265,6 +319,10 @@ for (uint32_t batch = 0; batch < totalBatches; batch++) {
 | 100 | 100 次 | - | 2 次 | **50×** |
 | 128 | 128 次 | - | 2 次 | **64×** |
 | 200 | 200 次 | - | 4 次 | **50×** |
+
+### 半精度加减法（FP16/BF16 Add/Sub）
+
+升精度路径相对直接 `Add/Sub<half>`：+3 条指令（共 4 条）、+2×count×sizeof(float) UB。适用场景见[场景3 默认策略](#默认策略)。
 
 ### 实测示例（Softmax ARA 分支）
 
@@ -303,6 +361,9 @@ for (uint32_t batch = 0; batch < totalBatches; batch++) {
 | 越界崩溃 | repeatTime 计算错误 | 使用三目运算 |
 | Buffer 不足 | 使用 Duplicate 方案 | 改用 Adds/Muls |
 | dst == tmpBuffer | Reduce API 限制 | 使用不同 buffer |
+| FP16/BF16 加减法精度丢失 | 直接 `Add/Sub<half>` 大数吃小数 | 升精度：`Cast→FP32 Add/Sub(in-place)→Cast` |
+| 半精度加减法 Cast 后越界 | 临时 Buffer 不足 | 预留 `2 × count × sizeof(float)`，Add/Sub 复用 src0Fp32 |
+| `Get<T>(len)` 取出长度异常 | 误把字节数当成元素数 | `len` 是元素数，不是字节数 |
 
 ---
 
@@ -320,6 +381,12 @@ for (uint32_t batch = 0; batch < totalBatches; batch++) {
 - [ ] 使用 `src1RepStride = 0` 实现广播
 - [ ] R > 64 时使用分批处理
 - [ ] offset 计算正确：`offset = startRow * alignedCols`
+
+**半精度加减法（FP16/BF16 Add/Sub）**：
+- [ ] 默认升精度；仅当 spec 明确"输入同量级"时才允许直接 `Add/Sub<half>`
+- [ ] 临时 Buffer 预留 `K × count × sizeof(float)`，`Add/Sub<float>` 支持别名故 K=2，dst 复用 src0Fp32（in-place）
+- [ ] `Get<T>(len)` 的 len 是元素数；偏移用 `tensor[N]`
+- [ ] Cast 方向：`half→float` 用 `CAST_NONE`，`float→half` 用 `CAST_ROUND`
 
 ---
 

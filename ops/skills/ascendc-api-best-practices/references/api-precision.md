@@ -53,3 +53,9 @@ half 输入 → Cast(FP32) → 中间计算(FP32) → Cast(half) → half 输出
 1. **ReduceMax/Exp/ReduceSum** 在 FP32 上精度更稳定
 2. **避免 FP16 数值溢出**：Exp 结果可能超出 FP16 表示范围
 3. **累积误差控制**：多次运算的累积误差在 FP32 下更小
+
+### 加减法场景示例
+
+半精度加减法默认升 FP32；仅当 spec 明确"输入同量级"（如 mask 叠加、已归一化概率相加）时才允许直接 `Add/Sub<half>`。BF16 与 FP16 适用同一规则，仅临界比值不同（BF16=128，FP16=1024）。
+
+> 完整示例、决策表与 Kernel 集成要点见 [api-arithmetic.md → 场景3](api-arithmetic.md#场景3半精度加减法精度优化)。
