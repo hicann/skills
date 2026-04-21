@@ -18,42 +18,16 @@
 
 ## 🔥 最新动态
 
-### 【2026-04-16】
-#### 新特性 New Features
-- 【插件安装，Plugin】新增 Plugin 化安装体系，支持 Claude Code 和 OpenCode 两种插件安装方式，支持按 Team 精简安装，会话启动时自动注入 CANNBot 上下文
-- 【模型推理优化】新增 NPU 模型推理端到端优化 Skill 体系，覆盖框架适配、并行策略、KVCache/FA、融合算子、图模式适配等完整优化链路
-- 【模型推理优化】新增 3 个 SubAgent（analyzer / implementer / reviewer），支持多角色协同的阶段化优化工作流
-- 【模型推理优化】新增 infer-model-optimize-team，通过 init.sh 一键安装推理优化环境
+- **2026-04-21** — 修复测试框架并解决识别到的多项校验问题
+- **2026-04-20** — 新增 regbase 配置最佳实践，修复环境检查设备计数 bug，统一算子目录命名 (ops → operators)
+- **2026-04-18** — 修复 ops-profiling 技能名称不一致问题
+- **2026-04-17** — 新增精度模式自动生成、完善 broadcast tiling 设计，新增初始化脚本和快速入门指南
+- **2026-04-16** — 新增 Plugin 化安装体系（Claude Code / OpenCode），新增 NPU 模型推理端到端优化 Skill 体系（含 3 个 SubAgent 和 infer-model-optimize-team）
+- **2026-04-14** — 新增 Ascend 950 仿真 Skill，增强 UT/ST 测试能力，修复 verify_environment.sh 设备计数 bug
+- **2026-04-13** — 支持 Team 级代码检视全量覆盖，子 Agent 并行检视提升效果
+- **2026-04-10** — 新增 PyPTO 算子开发全套体系（8 个 Skills + 3 个 Agents + 1 个 Team）
 
-### 【2026-04-14】
-#### 新特性 New Features
-- 【仿真，ops-simulator】新增Ascend 950 仿真Skill：支持 Ascend 950 仿真，并且输出性能分析报告和流水线图。
-#### 特性增强 Feature Enhancement
-- 【UT单元测试，ascendc-ut-develop】支持针对 ops-transformer 算子仓的 UT、CSV 代码重构，分离数据与测试代码，提高调试效率。
-- 【aclnn 接口测试用例设计，ascendc-st-design】新增支持aclIntArray / aclFloatArray / aclBoolArray / aclScalarList / aclIntArray类型接口生成ST用例。
-#### 问题修复 Bug Fix
-- 【算子直调，ops-direct-invoke】修改verify_environment.sh脚本，返回environment.json 固定为1的bug，应该按实际设备的npu count返回。
-
-### 【2026-04-13】
-#### 新特性 New Features
-- 【Team调度】支持team级代码条例全量检视，review team 派发条例给代码检视。支持子agent 并行检视、验证，提升检视效果，降低上下文的压力。
-
-### 【2026-04-10】
-#### 新特性 New Features
-- 【PyPTO】新增 Skill：pypto-api-explore，PyPTO API 探索与文档查阅。
-- 【PyPTO】新增 Skill：pypto-golden-generate，Golden 数据生成与验证。
-- 【PyPTO】新增 Skill：pypto-intent-understand，用户需求解析与规格生成。
-- 【PyPTO】新增 Skill：pypto-op-design 算子方案设计，含快速参考和设计模板。
-- 【PyPTO】新增 Skill：pypto-op-develop 算子开发实现，含错误排查、约束参考、测试模板和环境脚本。
-- 【PyPTO】新增 Skill：pypto-op-perf-tune 性能分析与调优（frontend / incore / swimlane 三个子模块）。
-- 【PyPTO】新增 Skill：pypto-precision-debug 精度问题定位与调试。
-- 【PyPTO】新增 Skill：pypto-precision-compare 精度对比验证（含二分查找和自动化脚本）。
-- 【PyPTO】新增 Agent：pypto-op-analyst: 算子分析 Agent
-- 【PyPTO】新增 Agent：pypto-op-developer: 算子开发 Agent
-- 【PyPTO】新增 Agent：pypto-op-perf-tuner: 性能调优 Agent
-- 【PyPTO】新增 Team：pypto-op-orchestrator 算子开发编排 （含初始化脚本和快速入门）。
-
-### 特性发布、变更记录，详见 [CHANGELOG.md](CHANGELOG.md) 文件。
+> 详细变更记录，详见 [CHANGELOG.md](CHANGELOG.md) 文件。
 
 &nbsp;
 

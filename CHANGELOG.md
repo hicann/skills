@@ -1,5 +1,27 @@
 ## 🔥 更新日志
 
+### 【2026-04-21】
+#### 问题修复 Bug Fix
+- 【测试框架，tests】修复测试框架及识别到的多项校验问题，包括版本漂移自动恢复、文件内容质量检查等
+
+### 【2026-04-20】
+#### 新特性 New Features
+- 【最佳实践，regbase】新增 regbase 配置最佳实践知识
+- 【工程实践】新增 add/div 算子 fp16/bf16 → fp32 类型转换实践
+#### 问题修复 Bug Fix
+- 【环境检查，env-check】修复 verify_environment.sh 设备计数返回 bug
+- 【目录重构】统一算子目录命名 (ops → operators)
+
+### 【2026-04-18】
+#### 问题修复 Bug Fix
+- 【性能分析，ops-profiling】修复 ops-profiling 技能名称不一致问题
+
+### 【2026-04-17】
+#### 新特性 New Features
+- 【测试开发，st-design】新增精度模式自动生成
+- 【Tiling 设计，tiling-design】完善 broadcast tiling 设计文档
+- 【代码检视，ops-direct-invoke】新增初始化脚本和快速入门指南，完善 CANNBot 代码检视环境的搭建与使用说明
+
 ### 【2026-04-16】
 #### 新特性 New Features
 - 【插件安装，Plugin】新增 Plugin 化安装体系，支持 Claude Code 和 OpenCode 两种插件安装方式：
@@ -7,11 +29,17 @@
   - OpenCode 用户：通过 `opencode plugin` 命令安装，支持项目级和全局安装
   - 支持按 Team 精简安装（ops-direct-invoke / pypto-op-orchestrator），避免加载不需要的 Agents 和 Skills
 - 【Session Hook】ops-direct-invoke 和 pypto-op-orchestrator 两个 Team 新增 session-start Hook，会话启动时自动注入 CANNBot 上下文，无需用户手动执行初始化命令
-- 【安装方式，README】README 快速开始新增"方式一：Plugin 安装（推荐）"和"方式二：脚本安装"，按 Claude Code / OpenCode 分类说明安装步骤
+- 【模型推理优化】新增 NPU 模型推理端到端优化 Skill 体系（model-infer-*），覆盖框架适配、并行策略、KVCache/FA、融合算子、图模式适配等完整优化链路
+- 【模型推理优化】新增 3 个 SubAgent（model-infer-analyzer / model-infer-implementer / model-infer-reviewer），支持多角色协同的阶段化优化工作流
+- 【模型推理优化】新增 infer-model-optimize-team，通过 init.sh 一键安装推理优化环境
+- 【TileLang】新增 TileLang 算子设计和开发技能（ops-easyasc-dsl）
 #### 特性增强 Feature Enhancement
+- 【安装方式，README】README 快速开始新增"方式一：Plugin 安装（推荐）"和"方式二：脚本安装"，按 Claude Code / OpenCode 分类说明安装步骤
 - 【算子直调，ops-direct-invoke】init.sh 和 quickstart.md 适配 Plugin 安装方式，支持按 Team 隔离配置
 - 【PyPTO，pypto-op-orchestrator】init.sh 和 quickstart.md 适配 Plugin 安装方式，支持按 Team 隔离配置
 - 【版本维护，tests】新增 Plugin 版本维护测试框架（tests/unit/teams/test-version.sh），支持版本一致性校验和自动化测试
+#### 问题修复 Bug Fix
+- 【Plugin 安装】修复 OpenCode Plugin 安装问题
 
 
 ### 【2026-04-14】
