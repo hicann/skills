@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 # =============================================================================
 # Test: Skill Content
 # =============================================================================
 # Validates content quality for all skills.
 # Rules tested:
 # - S-CON-01: name matches directory name
-# - S-CON-02: description contains trigger keywords
-# - S-CON-03: description contains trigger conditions (recommended)
-# - S-CON-04: naming follows prefix convention
+# - S-CON-02: description contains trigger keywords (skipped if disable-model-invocation)
+# - S-CON-03: description contains trigger conditions (skipped if disable-model-invocation)
+# - S-CON-04: instructions are specific and actionable
+# - S-CON-05: error handling / troubleshooting section exists
+# - S-CON-06: usage examples provided (warning)
+# - S-CON-07: progressive disclosure (long SKILL.md links to references/)
+# - S-CON-08: description 三段式（动作+触发+关键词）(disable-model-invocation: 1 segment ok)
+# - S-CON-09: description 无反模式短语
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/test-helpers.sh"
-
-echo "=== Test: Skill Content ==="
-echo ""
-echo "This test validates content quality for all skills."
-echo "Run time: ~15 seconds (no CLI needed)"
-echo ""
 
 # Counters
 total_skills=0
@@ -36,7 +44,7 @@ echo ""
 # ============================================
 # Validate all skills content
 # ============================================
-print_section_header "Test: Skill Content (S-CON-01 to S-CON-04)"
+print_section_header "Test: Skill Content (S-CON-01..09)"
 
 for skill in $ALL_SKILLS; do
     skill_file=$(find_skill_file "$skill")

@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 # =============================================================================
 # CANN Skills Test Runner v0.1
 # =============================================================================
@@ -318,11 +327,12 @@ run_test_file() {
     print_section "Running: $test_file"
 
     if $VERBOSE; then
-        if timeout $TIMEOUT bash "$test_path"; then
+        if output=$(timeout $TIMEOUT bash "$test_path" 2>&1); then
             status="pass"
         else
             status="fail"
         fi
+        echo "$output"
     else
         if output=$(timeout $TIMEOUT bash "$test_path" 2>&1); then
             status="pass"
@@ -337,32 +347,27 @@ run_test_file() {
     # Count warnings in output
     if [[ -n "$output" ]]; then
         warning_count=$(echo "$output" | grep -cE "\[WARN\]" 2>/dev/null || true)
-        # Ensure it's a valid number
         [[ "$warning_count" =~ ^[0-9]+$ ]] || warning_count=0
     fi
 
     case "$status" in
         pass)
-            print_pass "(${duration}s)"
+            print_pass "${test_file} (${duration}s)"
             # Show warnings if present in output
             if [[ "$warning_count" -gt 0 ]]; then
                 echo ""
                 echo "$output" | grep -E "\[WARN\]" | sed 's/^/    /'
-                echo ""
             fi
             TEST_RESULTS+=("pass:$test_file:$duration:$warning_count")
             record_test "pass" "$test_file" "$duration"
             ;;
         fail)
-            print_fail "(${duration}s)"
+            print_fail "${test_file} (${duration}s)"
             if [[ -n "$output" ]]; then
+                # Only show error/warn lines from sub-script, not the full dump
                 echo ""
-                echo -e "  ${YELLOW}--- Failure Details ---${NC}"
-                echo "$output" | sed 's/^/    /'
-                echo -e "  ${YELLOW}--- End ---${NC}"
+                echo "$output" | grep -E "\[FAIL\]|\[ERROR\]|\[WARN\]|\[SKIP\]" | sed 's/^/    /'
                 echo ""
-            else
-                echo "  (run with --verbose for more details)"
             fi
             TEST_RESULTS+=("fail:$test_file:$duration:$warning_count")
             record_test "fail" "$test_file" "$duration"
@@ -376,25 +381,17 @@ run_all_tests() {
     local total_failed=0
     local tests_run=0
 
+    local platform_version
+    if [ "$PLATFORM" = "none" ]; then
+        platform_version="no CLI available"
+    else
+        platform_version=$(get_platform_version "$PLATFORM")
+    fi
+
     print_test_banner "CANN Skills Test Suite v0.1" "
 Repository: $SKILLS_DIR
 Test time: $(date '+%Y-%m-%d %H:%M:%S')
-Platform: $PLATFORM"
-
-    echo ""
-    echo "Platform versions:"
-    case "$PLATFORM" in
-        claude)
-            echo "  Claude Code: $(get_platform_version claude)"
-            ;;
-        opencode)
-            echo "  OpenCode: $(get_platform_version opencode)"
-            ;;
-        none)
-            echo "  (no CLI - fast tests only)"
-            ;;
-    esac
-    echo ""
+Platform: $PLATFORM ($platform_version)"
 
     local tests
     if [[ -n "$CATEGORY" ]]; then
@@ -402,10 +399,6 @@ Platform: $PLATFORM"
     else
         tests=$(get_tests_for_category "all")
     fi
-
-    local test_count=$(echo "$tests" | grep -c ':' || echo "0")
-    echo "Tests to run: $test_count"
-    echo ""
 
     local test_array=()
     while IFS=':' read -r test_file speed; do
@@ -500,20 +493,6 @@ print_summary() {
     echo -e "  ${YELLOW}Warnings:${NC} $warnings"
     echo "  Duration:  ${total_duration}s"
     echo ""
-
-    if $RUN_FAST; then
-        echo "Note: Only fast tests were run (--fast flag)."
-        echo ""
-    fi
-
-    if ! $RUN_INTEGRATION && ! $RUN_ALL && [ -d "$SCRIPT_DIR/integration" ]; then
-        local integration_count=$(find "$SCRIPT_DIR/integration" -name "test-*.sh" -type f 2>/dev/null | wc -l)
-        if [ "$integration_count" -gt 0 ]; then
-            echo "Note: Integration tests were not run."
-            echo "Use --integration flag to run them."
-            echo ""
-        fi
-    fi
 
     if [[ "$OUTPUT_FORMAT" == "json" ]]; then
         output_json "$passed" "$failed" "$skipped" "$warnings" "$total_duration"

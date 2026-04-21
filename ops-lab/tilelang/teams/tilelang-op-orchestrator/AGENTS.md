@@ -1,3 +1,14 @@
+---
+description: TileLang-Ascend 算子开发团队，基于 TVM 编译器基础设施，提供 Python DSL 用于开发昇腾 NPU 高性能 kernel。
+mode: primary
+skills:
+  - tilelang-op-design
+  - tilelang-op-developer
+  - tilelang-api-best-practices
+  - tilelang-programming-model-guide
+  - tilelang-review
+---
+
 # AGENTS.md
 
 本文件为 AI Agent 在本代码仓库中进行 TileLang-Ascend 算子开发提供指导。

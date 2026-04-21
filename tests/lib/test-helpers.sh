@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 # =============================================================================
 # Helper functions for CANN Skills tests
 # =============================================================================
@@ -30,7 +39,7 @@ NC='\033[0m' # No Color
 setup_colors() {
     if [ -n "${NO_COLOR:-}" ]; then
         disable_colors
-    elif [ -n "${FORCE_COLOR:-}" ] || [ "${FORCE_COLOR:-}" = "1" ]; then
+    elif [ -n "${FORCE_COLOR:-}" ]; then
         enable_colors
     elif [ -t 1 ]; then
         enable_colors
@@ -109,7 +118,6 @@ setup_colors
 
 # Default configuration
 DEFAULT_TIMEOUT=60
-DEFAULT_MAX_TURNS=3
 DEFAULT_PLATFORM="opencode"  # claude, opencode, or all
 
 # Test results tracking
@@ -117,19 +125,12 @@ declare -g TEST_PASSED=0
 declare -g TEST_FAILED=0
 declare -g TEST_SKIPPED=0
 declare -g TEST_START_TIME=0
-declare -g TEST_OUTPUT_DIR=""
 
 # =============================================================================
 # Platform Detection
 # =============================================================================
 
 # Detect available platforms
-detect_platforms() {
-    local platforms=""
-    command -v claude &> /dev/null && platforms="$platforms claude"
-    command -v opencode &> /dev/null && platforms="$platforms opencode"
-    echo "$platforms"
-}
 
 # Check if a specific platform is available
 # Usage: is_platform_available "claude"
@@ -205,107 +206,10 @@ run_claude() {
     fi
 }
 
-# Run OpenCode with a prompt and capture output
-# Usage: run_opencode "prompt text" [timeout_seconds]
-run_opencode() {
-    local prompt="$1"
-    local timeout="${2:-$DEFAULT_TIMEOUT}"
-    local output_file=$(mktemp)
-
-    # Run OpenCode in headless mode
-    if timeout "$timeout" opencode -p "$prompt" > "$output_file" 2>&1; then
-        cat "$output_file"
-        rm -f "$output_file"
-        return 0
-    else
-        local exit_code=$?
-        cat "$output_file" >&2
-        rm -f "$output_file"
-        return $exit_code
-    fi
-}
-
-# Universal runner - auto-detect platform
-# Usage: run_ai "prompt text" [timeout_seconds] [platform]
-run_ai() {
-    local prompt="$1"
-    local timeout="${2:-$DEFAULT_TIMEOUT}"
-    local platform="${3:-$DEFAULT_PLATFORM}"
-
-    case "$platform" in
-        claude)  run_claude "$prompt" "$timeout" ;;
-        opencode) run_opencode "$prompt" "$timeout" ;;
-        *)
-            echo "[ERROR] Unknown platform: $platform"
-            return 1
-            ;;
-    esac
-}
 
 # =============================================================================
 # Assertions
 # =============================================================================
-
-# Check if output contains a pattern (case-insensitive)
-# Usage: assert_contains "output" "pattern" "test name"
-assert_contains() {
-    local output="$1"
-    local pattern="$2"
-    local test_name="${3:-test}"
-
-    if echo "$output" | grep -qiE "$pattern"; then
-        print_pass "$test_name"
-        return 0
-    else
-        print_fail "$test_name"
-        echo -e "  ${YELLOW}Expected to find:${NC} $pattern"
-        echo "  In output:"
-        echo "$output" | sed 's/^/    /'
-        return 1
-    fi
-}
-
-# Check if output does NOT contain a pattern
-# Usage: assert_not_contains "output" "pattern" "test name"
-assert_not_contains() {
-    local output="$1"
-    local pattern="$2"
-    local test_name="${3:-test}"
-
-    if echo "$output" | grep -qiE "$pattern"; then
-        print_fail "$test_name"
-        echo -e "  ${YELLOW}Did not expect to find:${NC} $pattern"
-        echo "  In output:"
-        echo "$output" | sed 's/^/    /'
-        return 1
-    else
-        print_pass "$test_name"
-        return 0
-    fi
-}
-
-# Check if output matches a count
-# Usage: assert_count "output" "pattern" expected_count "test name"
-assert_count() {
-    local output="$1"
-    local pattern="$2"
-    local expected="$3"
-    local test_name="${4:-test}"
-
-    local actual=$(echo "$output" | grep -ciE "$pattern" || echo "0")
-
-    if [ "$actual" -eq "$expected" ]; then
-        print_pass "$test_name (found $actual instances)"
-        return 0
-    else
-        print_fail "$test_name"
-        echo -e "  ${YELLOW}Expected $expected instances of:${NC} $pattern"
-        echo "  Found $actual instances"
-        echo "  In output:"
-        echo "$output" | sed 's/^/    /'
-        return 1
-    fi
-}
 
 # Check if pattern A appears before pattern B
 # Usage: assert_order "output" "pattern_a" "pattern_b" "test name"
@@ -332,8 +236,24 @@ assert_order() {
         print_pass "$test_name (A at line $line_a, B at line $line_b)"
         return 0
     elif [ "$line_a" -eq "$line_b" ]; then
-        print_pass "$test_name (both on line $line_a)"
-        return 0
+        # Same line: check character position order
+        local the_line
+        the_line=$(echo "$output" | sed -n "${line_a}p")
+        local pos_a pos_b
+        pos_a=$(echo "$the_line" | grep -iobE "$pattern_a" | head -1 | cut -d: -f1)
+        pos_b=$(echo "$the_line" | grep -iobE "$pattern_b" | head -1 | cut -d: -f1)
+        if [ -n "$pos_a" ] && [ -n "$pos_b" ] && [ "$pos_a" -le "$pos_b" ]; then
+            print_pass "$test_name (both on line $line_a, A at pos $pos_a, B at pos $pos_b)"
+            return 0
+        elif [ -n "$pos_a" ] && [ -n "$pos_b" ]; then
+            print_fail "$test_name"
+            echo -e "  ${YELLOW}Expected '$pattern_a' before '$pattern_b' on line $line_a${NC}"
+            echo "  But found A at pos $pos_a, B at pos $pos_b"
+            return 1
+        else
+            print_pass "$test_name (both on line $line_a)"
+            return 0
+        fi
     else
         print_fail "$test_name"
         echo -e "  ${YELLOW}Expected '$pattern_a' before '$pattern_b'${NC}"
@@ -362,42 +282,57 @@ assert_file_exists() {
 # File Link Validation
 # =============================================================================
 
-# Check link validity in a file (for SKILL.md and AGENT.md)
+# Check link validity in a file (for SKILL.md and agent <name>.md)
 # Usage: check_file_links "/path/to/file.md" "skill|agent"
 # Returns: 0 if all links valid, 1 if broken links found
 check_file_links() {
     local file="$1"
     local file_type="$2"
     local file_dir="$(dirname "$file")"
-    local item_name=$(basename "$file_dir")
+    local item_name
+    # For flat agent layout (agents/<name>.md), basename(dirname) is the
+    # generic "agents" directory, which leaks no information. Use the file
+    # stem instead. For skills/teams the file itself is SKILL.md / AGENTS.md,
+    # so basename(dirname) is still the semantically meaningful name.
+    if [ "$file_type" = "agent" ]; then
+        item_name=$(basename "$file" .md)
+    else
+        item_name=$(basename "$file_dir")
+    fi
     local broken_links=()
 
-    while IFS= read -r line; do
-        # Pattern: [text](references/...)
-        if echo "$line" | grep -qE '\]\(references/'; then
-            local link=$(echo "$line" | sed -n 's/.*(\(references\/[^)]*\)).*/\1/p' | head -1 | cut -d'#' -f1)
-            if [ -n "$link" ] && [ ! -e "$file_dir/$link" ]; then
-                broken_links+=("$link")
-            fi
-        fi
+    # Delegate link extraction to Python — shell sed chokes on URLs that
+    # contain '/' which must not be treated as the sed delimiter.
+    local links
+    links=$(python3 - "$file" <<'PY'
+import re, sys
+path = sys.argv[1]
+try:
+    text = open(path, encoding="utf-8", errors="replace").read()
+except OSError:
+    sys.exit(0)
+out = set()
+# [text](references/...) or [text](./...)
+for m in re.finditer(r'\]\((references/[^)\s]+|\./[^)\s]+)\)', text):
+    out.add(m.group(1))
+# {file:./references/...}
+for m in re.finditer(r'\{file:([^}\s]+)\}', text):
+    out.add(m.group(1))
+for raw in out:
+    link = raw.split('#', 1)[0]
+    if link.startswith('./'):
+        link = link[2:]
+    if link:
+        print(link)
+PY
+)
 
-        # Pattern: {file:./references/...}
-        if echo "$line" | grep -qE '\{file:'; then
-            local link=$(echo "$line" | sed -n 's/.*{file:\([^}]*\)}.*/\1/p' | head -1 | cut -d'#' -f1)
-            link="${link#./}"
-            if [ -n "$link" ] && [ ! -e "$file_dir/$link" ]; then
-                broken_links+=("$link")
-            fi
+    while IFS= read -r link; do
+        [ -z "$link" ] && continue
+        if [ ! -e "$file_dir/$link" ]; then
+            broken_links+=("$link")
         fi
-
-        # Pattern: [text](./path)
-        if echo "$line" | grep -qE '\]\(\./'; then
-            local link=$(echo "$line" | sed -n 's/.*(\./\([^)]*\)).*/\1/p' | head -1 | cut -d'#' -f1)
-            if [ -n "$link" ] && [ ! -e "$file_dir/$link" ]; then
-                broken_links+=("$link")
-            fi
-        fi
-    done < "$file"
+    done <<< "$links"
 
     if [ ${#broken_links[@]} -gt 0 ]; then
         print_fail "$file_type/$item_name: Broken links:"
@@ -407,36 +342,6 @@ check_file_links() {
         print_pass "$file_type/$item_name: All links valid"
         return 0
     fi
-}
-
-# =============================================================================
-# YAML Data Extraction
-# =============================================================================
-
-# Extract skills list from agent YAML front matter
-# Usage: extract_agent_skills "/path/to/AGENT.md"
-# Returns: space-separated list of skill names
-extract_agent_skills() {
-    local agent_file="$1"
-    local skills=()
-    local in_skills=false
-
-    while IFS= read -r line; do
-        if [[ "$line" == "skills:" ]]; then
-            in_skills=true
-            continue
-        fi
-
-        if $in_skills; then
-            if [[ "$line" =~ ^[[:space:]]+-[[:space:]]+(.+)$ ]]; then
-                skills+=("${BASH_REMATCH[1]}")
-            elif [[ ! "$line" =~ ^[[:space:]] ]] && [[ -n "$line" ]] && [[ "$line" != "---" ]]; then
-                break
-            fi
-        fi
-    done < "$agent_file"
-
-    echo "${skills[@]}"
 }
 
 # =============================================================================
@@ -556,7 +461,8 @@ analyze_premature_actions() {
     local todo_before=0
     if $tool_invoked && [ -n "$first_tool_line" ]; then
         todo_before=$(head -n "$first_tool_line" "$session_file" 2>/dev/null | \
-            grep -c '"name":"TodoWrite"' 2>/dev/null || echo "0")
+            grep -c '"name":"TodoWrite"' 2>/dev/null | tr -cd '0-9' || true)
+        todo_before="${todo_before:-0}"
     fi
     
     if [ "$todo_before" -gt 0 ]; then
@@ -567,7 +473,8 @@ analyze_premature_actions() {
     local read_before=0
     if $tool_invoked && [ -n "$first_tool_line" ]; then
         read_before=$(head -n "$first_tool_line" "$session_file" 2>/dev/null | \
-            grep -c '"name":"Read"' 2>/dev/null || echo "0")
+            grep -c '"name":"Read"' 2>/dev/null | tr -cd '0-9' || true)
+        read_before="${read_before:-0}"
     fi
     
     if [ "$read_before" -gt 0 ]; then
@@ -591,13 +498,17 @@ analyze_premature_actions() {
 get_all_skills_with_paths() {
     local tmpfile
     tmpfile=$(mktemp)
-    find "$SKILLS_DIR" -maxdepth 4 -path "*/skills/*/SKILL.md" 2>/dev/null > "$tmpfile" || true
-    find "$SKILLS_DIR/skills" -maxdepth 2 -name "SKILL.md" 2>/dev/null >> "$tmpfile" || true
-    
+    # Prune teams/ so nested team SKILL.md files (e.g.
+    # ops/teams/ops-registry-invoke/workflow/SKILL.md) are not mistakenly
+    # discovered as top-level skills.
+    find "$SKILLS_DIR" \
+        \( -name "node_modules" -o -name ".git" -o -name "teams" \) -prune -o \
+        -path "*/skills/*/SKILL.md" -print 2>/dev/null > "$tmpfile" || true
+
     while IFS= read -r f; do
         [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):$f"
     done < "$tmpfile" | sort -u -t: -k1,1
-    
+
     rm -f "$tmpfile"
 }
 
@@ -622,16 +533,22 @@ find_skill_file() {
 
 # Get list of all agents with their full paths
 # Returns: agent_name:full_path per line
+# Layout: agents/<name>.md (flat). Directory-based agents/<name>/AGENT.md is
+# NOT a valid layout and will be ignored by discovery.
 get_all_agents_with_paths() {
     local tmpfile
     tmpfile=$(mktemp)
-    find "$SKILLS_DIR" -maxdepth 4 -path "*/agents/*/AGENT.md" 2>/dev/null > "$tmpfile" || true
-    find "$SKILLS_DIR/agents" -maxdepth 2 -name "AGENT.md" 2>/dev/null >> "$tmpfile" || true
-    
+    # Flat layout: agents/<name>.md (exclude AGENTS.md team files)
+    find "$SKILLS_DIR" -path "*/agents/*.md" -not -name "AGENTS.md" \
+        -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null >> "$tmpfile" || true
+
     while IFS= read -r f; do
-        [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):$f"
+        [ -f "$f" ] || continue
+        local name
+        name=$(basename "$f" .md)
+        echo "${name}:${f}"
     done < "$tmpfile" | sort -u -t: -k1,1
-    
+
     rm -f "$tmpfile"
 }
 
@@ -642,7 +559,7 @@ get_all_agents() {
 
 # Find agent file by name
 # Usage: find_agent_file "agent-name"
-# Returns: full path to AGENT.md
+# Returns: full path to <name>.md under any agents/ directory
 find_agent_file() {
     local agent_name="$1"
     local result
@@ -650,7 +567,7 @@ find_agent_file() {
     if [ -n "$result" ]; then
         echo "$result"
     else
-        echo "$SKILLS_DIR/agents/$agent_name/AGENT.md"
+        echo "$SKILLS_DIR/agents/${agent_name}.md"
     fi
 }
 
@@ -659,13 +576,18 @@ find_agent_file() {
 get_all_teams_with_paths() {
     local tmpfile
     tmpfile=$(mktemp)
-    find "$SKILLS_DIR" -maxdepth 4 -path "*/teams/*/AGENTS.md" 2>/dev/null > "$tmpfile" || true
-    find "$SKILLS_DIR/teams" -maxdepth 2 -name "AGENTS.md" 2>/dev/null >> "$tmpfile" || true
-    
+    # Prune .opencode / .claude* / node_modules / .git so OpenCode/Claude
+    # auxiliary trees under a team (e.g. <team>/.opencode/AGENTS.md) are not
+    # mistaken for top-level teams.
+    find "$SKILLS_DIR" \
+        \( -name ".opencode" -o -name ".claude" -o -name ".claude-plugin" \
+           -o -name "node_modules" -o -name ".git" \) -prune -o \
+        -path "*/teams/*/AGENTS.md" -print 2>/dev/null > "$tmpfile" || true
+
     while IFS= read -r f; do
         [ -f "$f" ] && echo "$(basename "$(dirname "$f")"):$f"
     done < "$tmpfile" | sort -u -t: -k1,1
-    
+
     rm -f "$tmpfile"
 }
 
@@ -692,421 +614,199 @@ find_team_file() {
 # Structure & Content Validation Functions (Auto-scan)
 # =============================================================================
 
-# Skill description keywords (trigger keywords)
-SKILL_KEYWORDS="Ascend|算子|Kernel|Tiling|调试|debug|测试|test|性能|perf|精度|precision|NPU|开发|API|ACLNN|运行时|runtime"
+# Python validator script path
+SKILL_VALIDATOR="$LIB_DIR/skill_validator.py"
 
-# Required sections for agents (regex patterns)
-AGENT_REQUIRED_SECTIONS="核心职责|概述|核心原则|核心工作流程|Core Responsibilities|Overview"
-AGENT_RECOMMENDED_SECTIONS="工作流程|场景|Workflow|Scene"
+# Parse JSONL output from skill_validator.py into tab-separated level/rule/msg lines
+_parse_jsonl() {
+    python3 - <<'PYEOF' "$1"
+import json, sys
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            level = obj.get("level", "")
+            rule = obj.get("rule", "")
+            msg = obj.get("msg", "")
+            print(f"{level}\t{rule}\t{msg}")
+        except json.JSONDecodeError:
+            pass
+PYEOF
+}
 
-# Validate skill STRUCTURE
-# Rules: S-STR-01 to S-STR-07
+# Run the Python validator and dispatch each JSONL finding to print helpers.
+# Usage: _run_validator <item_name> <subcmd> <file> [extra_args...]
+# Returns: 0 if no error-level findings, 1 otherwise.
+_run_validator() {
+    local item_name="$1"
+    local subcmd="$2"
+    local file="$3"
+    shift 3
+    local tmp
+    tmp=$(mktemp)
+    if ! python3 "$SKILL_VALIDATOR" "$subcmd" "$file" "$@" >"$tmp" 2>&1; then
+        print_fail "$item_name: validator invocation failed"
+        cat "$tmp" >&2
+        rm -f "$tmp"
+        return 1
+    fi
+
+    local had_error=0 err_count=0 warn_count=0
+    # Batch-parse all JSONL lines in a single python3 invocation
+    local parsed
+    parsed=$(_parse_jsonl "$tmp")
+
+    while IFS=$'\t' read -r level rule msg; do
+        [ -z "$level" ] && continue
+        case "$level" in
+            error)
+                had_error=1
+                err_count=$((err_count + 1))
+                print_error "${rule}: ${msg}"
+                ;;
+            warn)
+                warn_count=$((warn_count + 1))
+                echo -e "    ${YELLOW}[WARN]${NC} ${item_name}: ${rule}: ${msg}"
+                ;;
+            *)
+                echo "  ${line}"
+                ;;
+        esac
+    done <<< "$parsed"
+    rm -f "$tmp"
+
+    if [ $had_error -ne 0 ]; then
+        print_fail "${item_name}: ${err_count} error(s), ${warn_count} warning(s)"
+        return 1
+    fi
+    if [ $warn_count -gt 0 ]; then
+        print_pass "${item_name}: valid (${warn_count} warning(s))"
+    else
+        print_pass "${item_name}: valid"
+    fi
+    return 0
+}
+
+# Validate skill STRUCTURE + CONTENT in one pass (Python-backed).
+# Rules: S-STR-01..16, S-CON-01..09
 # Returns: 0 if valid, 1 if errors found
 validate_skill_structure() {
     local skill_file="$1"
-    local skill_name=$(basename $(dirname "$skill_file"))
-    local errors=()
-    
-    # S-STR-01: YAML format
-    if ! head -1 "$skill_file" | grep -q "^---$"; then
-        errors+=("S-STR-01: Missing opening ---")
-    fi
-    if ! head -20 "$skill_file" | grep -q "^---$"; then
-        errors+=("S-STR-01: Missing closing ---")
-    fi
-    
-    # S-STR-02: name field exists
-    if ! grep -q "^name:" "$skill_file"; then
-        errors+=("S-STR-02: Missing 'name' field")
-    fi
-    
-    # S-STR-03: description field exists
-    if ! grep -q "^description:" "$skill_file"; then
-        errors+=("S-STR-03: Missing 'description' field")
-    fi
-    
-    # S-STR-04: references directory not empty (if exists)
-    local ref_dir="$(dirname "$skill_file")/references"
-    if [ -d "$ref_dir" ]; then
-        local ref_count=$(find "$ref_dir" -name "*.md" -type f 2>/dev/null | wc -l)
-        if [ "$ref_count" -eq 0 ]; then
-            errors+=("S-STR-04: Empty references directory")
-        fi
-    fi
-    
-    # S-STR-05: name length 1-64 characters
-    local yaml_name=$(grep "^name:" "$skill_file" | head -1 | sed 's/^name:[[:space:]]*//' | tr -d '[:space:]')
-    if [ -n "$yaml_name" ]; then
-        local name_len=${#yaml_name}
-        if [ "$name_len" -lt 1 ] || [ "$name_len" -gt 64 ]; then
-            errors+=("S-STR-05: name length must be 1-64 chars (got $name_len)")
-        fi
-    fi
-    
-    # S-STR-06: name format ^[a-z0-9]+(-[a-z0-9]+)*$
-    if [ -n "$yaml_name" ] && ! echo "$yaml_name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
-        errors+=("S-STR-06: name must match ^[a-z0-9]+(-[a-z0-9]+)*\$ (got '$yaml_name')")
-    fi
-    
-    # S-STR-07: description length 1-1024 characters
-    local description=$(grep "^description:" "$skill_file" | head -1 | sed 's/^description:[[:space:]]*//')
-    if [ -n "$description" ]; then
-        local desc_len=${#description}
-        if [ "$desc_len" -lt 1 ] || [ "$desc_len" -gt 1024 ]; then
-            errors+=("S-STR-07: description length must be 1-1024 chars (got $desc_len)")
-        fi
-    fi
-    
-    # Note: S-STR-08 (Link validity) is checked separately in test-structure.sh
-    
-    # Output
-    if [ ${#errors[@]} -gt 0 ]; then
-        print_fail "$skill_name: ${#errors[@]} error(s)"
-        for err in "${errors[@]}"; do print_error "$err"; done
-        return 1
-    else
-        print_pass "$skill_name: Structure valid"
-        return 0
-    fi
+    local skill_name
+    skill_name=$(basename "$(dirname "$skill_file")")
+    _run_validator "$skill_name" validate-skill "$skill_file" --subset=structure
 }
 
-# Validate skill CONTENT
-# Rules: S-CON-01 to S-CON-04
-# Returns: 0 if valid, 1 if errors found
 validate_skill_content() {
     local skill_file="$1"
-    local skill_name=$(basename $(dirname "$skill_file"))
-    local errors=()
-    local warnings=()
-    
-    # S-CON-01: name matches directory name
-    local yaml_name=$(grep "^name:" "$skill_file" | head -1 | cut -d: -f2 | tr -d ' ')
-    if [ -n "$yaml_name" ] && [ "$yaml_name" != "$skill_name" ]; then
-        errors+=("S-CON-01: name '$yaml_name' != directory '$skill_name'")
-    fi
-    
-    # S-CON-02: description has trigger keywords
-    local description=$(grep "^description:" "$skill_file" | head -1 | cut -d: -f2- | sed 's/^[[:space:]]*//')
-    if [ -n "$description" ] && ! echo "$description" | grep -qiE "$SKILL_KEYWORDS"; then
-        errors+=("S-CON-02: Description lacks trigger keywords")
-    fi
-    
-    # S-CON-03: description has trigger conditions (recommended)
-    if [ -n "$description" ] && ! echo "$description" | grep -qiE "触发|Trigger|使用|场景|条件"; then
-        warnings+=("S-CON-03: Missing trigger conditions in description")
-    fi
-    
-    # S-CON-04: naming prefix convention
-    if ! echo "$skill_name" | grep -qE "^(cann-|ascendc-|[a-z]+-)"; then
-        errors+=("S-CON-04: Naming must have prefix (cann-, ascendc-, etc.)")
-    fi
-    
-    # Output
-    if [ ${#errors[@]} -gt 0 ]; then
-        print_fail "$skill_name: ${#errors[@]} error(s), ${#warnings[@]} warning(s)"
-        for err in "${errors[@]}"; do print_error "$err"; done
-        for warn in "${warnings[@]}"; do echo -e "    ${YELLOW}[WARN]${NC} $skill_name: $warn"; done
-        return 1
-    elif [ ${#warnings[@]} -gt 0 ]; then
-        print_pass "$skill_name: Valid (${#warnings[@]} warning(s))"
-        for warn in "${warnings[@]}"; do echo -e "    ${YELLOW}[WARN]${NC} $skill_name: $warn"; done
-        return 0
-    else
-        print_pass "$skill_name: Content valid"
-        return 0
-    fi
+    local skill_name
+    skill_name=$(basename "$(dirname "$skill_file")")
+    _run_validator "$skill_name" validate-skill "$skill_file" --subset=content
 }
 
-# Validate agent STRUCTURE
-# Rules: A-STR-01 to A-STR-07
-# Returns: 0 if valid, 1 if errors found
+# Validate agent STRUCTURE + CONTENT (Python-backed).
+# Rules: A-STR-01..07,09,14 + A-CON-01..09
 validate_agent_structure() {
     local agent_file="$1"
-    local agent_name=$(basename $(dirname "$agent_file"))
-    local errors=()
-    
-    # A-STR-01: YAML format
-    if ! head -1 "$agent_file" | grep -q "^---$"; then
-        errors+=("A-STR-01: Missing opening ---")
-    fi
-    if ! head -20 "$agent_file" | grep -q "^---$"; then
-        errors+=("A-STR-01: Missing closing ---")
-    fi
-    
-    # A-STR-02: name/description/mode fields exist
-    for field in name description mode; do
-        if ! grep -q "^$field:" "$agent_file"; then
-            errors+=("A-STR-02: Missing '$field' field")
-        fi
-    done
-    
-    # A-STR-03: mode is primary or subagent
-    local mode=$(grep "^mode:" "$agent_file" | head -1 | cut -d: -f2 | tr -d ' ')
-    if [ -n "$mode" ] && [[ "$mode" != "primary" && "$mode" != "subagent" ]]; then
-        errors+=("A-STR-03: Invalid mode '$mode' (must be: primary or subagent)")
-    fi
-    
-    # A-STR-04: skills dependencies exist
-    local skills=$(extract_agent_skills "$agent_file")
-    for skill in $skills; do
-        local skill_file
-        skill_file=$(find_skill_file "$skill")
-        if [ ! -f "$skill_file" ]; then
-            errors+=("A-STR-04: Missing skill dependency: $skill")
-        fi
-    done
-    
-    # A-STR-05: name length 1-64 characters
-    local yaml_name=$(grep "^name:" "$agent_file" | head -1 | sed 's/^name:[[:space:]]*//' | tr -d '[:space:]')
-    if [ -n "$yaml_name" ]; then
-        local name_len=${#yaml_name}
-        if [ "$name_len" -lt 1 ] || [ "$name_len" -gt 64 ]; then
-            errors+=("A-STR-05: name length must be 1-64 chars (got $name_len)")
-        fi
-    fi
-    
-    # A-STR-06: name format ^[a-z0-9]+(-[a-z0-9]+)*$
-    if [ -n "$yaml_name" ] && ! echo "$yaml_name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
-        errors+=("A-STR-06: name must match ^[a-z0-9]+(-[a-z0-9]+)*\$ (got '$yaml_name')")
-    fi
-    
-    # A-STR-07: description length 1-1024 characters
-    local description=$(grep "^description:" "$agent_file" | head -1 | sed 's/^description:[[:space:]]*//')
-    if [ -n "$description" ]; then
-        local desc_len=${#description}
-        if [ "$desc_len" -lt 1 ] || [ "$desc_len" -gt 1024 ]; then
-            errors+=("A-STR-07: description length must be 1-1024 chars (got $desc_len)")
-        fi
-    fi
-    
-    # Note: A-STR-08 (Link validity) is checked separately in test-structure.sh
-    
-    # Output
-    if [ ${#errors[@]} -gt 0 ]; then
-        print_fail "$agent_name: ${#errors[@]} error(s)"
-        for err in "${errors[@]}"; do print_error "$err"; done
-        return 1
-    else
-        print_pass "$agent_name: Structure valid"
-        return 0
-    fi
+    local agent_name
+    agent_name=$(basename "$agent_file" .md)
+    local skill_paths
+    skill_paths=$(get_all_skills_with_paths | cut -d: -f2-)
+    # shellcheck disable=SC2086
+    _run_validator "$agent_name" validate-agent "$agent_file" --subset=structure $skill_paths
 }
 
-# Validate agent CONTENT
-# Rules: A-CON-01 to A-CON-05
-# Returns: 0 if valid, 1 if errors found
 validate_agent_content() {
     local agent_file="$1"
-    local agent_name=$(basename $(dirname "$agent_file"))
-    local errors=()
-    local warnings=()
-    
-    # A-CON-01: name matches directory name
-    local yaml_name=$(grep "^name:" "$agent_file" | head -1 | cut -d: -f2 | tr -d ' ')
-    if [ -n "$yaml_name" ] && [ "$yaml_name" != "$agent_name" ]; then
-        errors+=("A-CON-01: name '$yaml_name' != directory '$agent_name'")
+    local agent_name
+    agent_name=$(basename "$agent_file" .md)
+    local skill_paths
+    skill_paths=$(get_all_skills_with_paths | cut -d: -f2-)
+    # shellcheck disable=SC2086
+    _run_validator "$agent_name" validate-agent "$agent_file" --subset=content $skill_paths
+}
+
+# Validate team STRUCTURE + CONTENT (Python-backed).
+# Rules: T-STR-01..05,07 + T-CON-01..03
+validate_team_structure() {
+    local team_file="$1"
+    local team_name
+    team_name=$(basename "$(dirname "$team_file")")
+    local team_dir
+    team_dir=$(dirname "$team_file")
+    local skill_paths
+    skill_paths=$(get_all_skills_with_paths | cut -d: -f2-)
+    # Optimization: Support local skills bundled in team directory
+    local local_skills
+    local_skills=$(find "$team_dir" -name "SKILL.md" 2>/dev/null || true)
+    # shellcheck disable=SC2086
+    _run_validator "$team_name" validate-team "$team_file" --subset=structure $skill_paths $local_skills
+}
+
+validate_team_content() {
+    local team_file="$1"
+    local team_name
+    team_name=$(basename "$(dirname "$team_file")")
+    local team_dir
+    team_dir=$(dirname "$team_file")
+    local skill_paths
+    skill_paths=$(get_all_skills_with_paths | cut -d: -f2-)
+    local local_skills
+    local_skills=$(find "$team_dir" -name "SKILL.md" 2>/dev/null || true)
+    # shellcheck disable=SC2086
+    _run_validator "$team_name" validate-team "$team_file" --subset=content $skill_paths $local_skills
+}
+
+# Cross-file uniqueness check.
+# Usage: validate_global_uniqueness <skill|agent|team>
+# Returns: 0 if all names unique, 1 if duplicates found.
+validate_global_uniqueness() {
+    local kind="$1"
+    local paths
+    case "$kind" in
+        skill) paths=$(get_all_skills_with_paths | cut -d: -f2-) ;;
+        agent) paths=$(get_all_agents_with_paths | cut -d: -f2-) ;;
+        team)  paths=$(get_all_teams_with_paths  | cut -d: -f2-) ;;
+        *) print_error "validate_global_uniqueness: unknown kind '$kind'"; return 1 ;;
+    esac
+
+    if [ -z "$paths" ]; then
+        return 0
     fi
-    
-    # A-CON-02: description has trigger keywords
-    local description=$(grep "^description:" "$agent_file" | head -1 | cut -d: -f2- | sed 's/^[[:space:]]*//')
-    if [ -n "$description" ] && ! echo "$description" | grep -qiE "$SKILL_KEYWORDS"; then
-        errors+=("A-CON-02: Description lacks trigger keywords")
-    fi
-    
-    # A-CON-03: naming prefix convention
-    if ! echo "$agent_name" | grep -qE "^(cann-|ascendc-|[a-z]+-)"; then
-        errors+=("A-CON-03: Naming must have prefix (cann-, ascendc-, etc.)")
-    fi
-    
-    # A-CON-04: core responsibilities section (required)
-    if ! grep -qE "^#+ *($AGENT_REQUIRED_SECTIONS)" "$agent_file"; then
-        errors+=("A-CON-04: Missing core responsibilities section")
-    fi
-    
-    # A-CON-05: removed per user request (was: responsibility boundary)
-    
-    # A-CON-07: workflow section (recommended, removed per user request)
-    
-    # Output
-    if [ ${#errors[@]} -gt 0 ]; then
-        print_fail "$agent_name: ${#errors[@]} error(s), ${#warnings[@]} warning(s)"
-        for err in "${errors[@]}"; do print_error "$err"; done
-        for warn in "${warnings[@]}"; do echo -e "    ${YELLOW}[WARN]${NC} $agent_name: $warn"; done
+
+    local tmp
+    tmp=$(mktemp)
+    # shellcheck disable=SC2086
+    python3 "$SKILL_VALIDATOR" check-uniqueness "$kind" $paths >"$tmp"
+
+    local had_error=0
+    # Batch-parse all JSONL lines in a single python3 invocation
+    local parsed
+    parsed=$(_parse_jsonl "$tmp")
+
+    while IFS=$'\t' read -r level rule msg; do
+        [ -z "$level" ] && continue
+        if [ "$level" = "error" ]; then
+            had_error=1
+            print_error "${rule}: ${msg}"
+        fi
+    done <<< "$parsed"
+    rm -f "$tmp"
+
+    if [ $had_error -ne 0 ]; then
+        print_fail "${kind}: uniqueness check failed"
         return 1
-    elif [ ${#warnings[@]} -gt 0 ]; then
-        print_pass "$agent_name: Valid (${#warnings[@]} warning(s))"
-        for warn in "${warnings[@]}"; do echo -e "    ${YELLOW}[WARN]${NC} $agent_name: $warn"; done
-        return 0
-    else
-        print_pass "$agent_name: Content valid"
-        return 0
     fi
+    print_pass "${kind}: uniqueness OK"
+    return 0
 }
 
 # =============================================================================
 # Team Structure & Content Validation Functions
 # =============================================================================
-
-# Team description keywords (trigger keywords)
-TEAM_KEYWORDS="团队|Team|协同|编排|流程|开发|Agent|多Agent"
-
-# Extract skills list from team YAML front matter
-# Usage: extract_team_skills "/path/to/AGENTS.md"
-# Returns: space-separated list of skill names
-extract_team_skills() {
-    local team_file="$1"
-    local skills=()
-    local in_skills=false
-
-    while IFS= read -r line; do
-        if [[ "$line" == "skills:" ]]; then
-            in_skills=true
-            continue
-        fi
-
-        if $in_skills; then
-            if [[ "$line" =~ ^[[:space:]]+-[[:space:]]+(.+)$ ]]; then
-                skills+=("${BASH_REMATCH[1]}")
-            elif [[ ! "$line" =~ ^[[:space:]] ]] && [[ -n "$line" ]] && [[ "$line" != "---" ]]; then
-                break
-            fi
-        fi
-    done < "$team_file"
-
-    echo "${skills[@]}"
-}
-
-# Validate team STRUCTURE
-# Rules: T-STR-01 to T-STR-07
-# Returns: 0 if valid, 1 if errors found
-validate_team_structure() {
-    local team_file="$1"
-    local team_name=$(basename $(dirname "$team_file"))
-    local errors=()
-
-    # T-STR-01: YAML format
-    if ! head -1 "$team_file" | grep -q "^---$"; then
-        errors+=("T-STR-01: Missing opening ---")
-    fi
-    if ! head -20 "$team_file" | grep -q "^---$"; then
-        errors+=("T-STR-01: Missing closing ---")
-    fi
-
-    # T-STR-02: description field exists
-    if ! grep -q "^description:" "$team_file"; then
-        errors+=("T-STR-02: Missing 'description' field")
-    fi
-
-    # T-STR-03: mode field exists and is "primary"
-    local mode=$(grep "^mode:" "$team_file" | head -1 | cut -d: -f2 | tr -d ' ')
-    if [ -z "$mode" ]; then
-        errors+=("T-STR-03: Missing 'mode' field")
-    elif [ "$mode" != "primary" ]; then
-        errors+=("T-STR-03: Invalid mode '$mode' (must be: primary)")
-    fi
-
-    # T-STR-04: skills field exists
-    if ! grep -q "^skills:" "$team_file"; then
-        errors+=("T-STR-04: Missing 'skills' field")
-    fi
-
-    # T-STR-05: skills dependencies exist
-    local skills=$(extract_team_skills "$team_file")
-    for skill in $skills; do
-        local skill_file
-        skill_file=$(find_skill_file "$skill")
-        if [ ! -f "$skill_file" ]; then
-            errors+=("T-STR-05: Missing skill dependency: $skill")
-        fi
-    done
-
-    # T-STR-06: description length 1-1024 characters
-    local description=$(grep "^description:" "$team_file" | head -1 | sed 's/^description:[[:space:]]*//')
-    if [ -n "$description" ]; then
-        local desc_len=${#description}
-        if [ "$desc_len" -lt 1 ] || [ "$desc_len" -gt 1024 ]; then
-            errors+=("T-STR-06: description length must be 1-1024 chars (got $desc_len)")
-        fi
-    fi
-
-    # T-STR-07: references directory not empty (if exists)
-    local ref_dir="$(dirname "$team_file")/references"
-    if [ -d "$ref_dir" ]; then
-        local ref_count=$(find "$ref_dir" -name "*.md" -type f 2>/dev/null | wc -l)
-        if [ "$ref_count" -eq 0 ]; then
-            errors+=("T-STR-07: Empty references directory")
-        fi
-    fi
-
-    # Note: T-STR-08 (Link validity) is checked separately in test-structure.sh
-
-    # Output
-    if [ ${#errors[@]} -gt 0 ]; then
-        print_fail "$team_name: ${#errors[@]} error(s)"
-        for err in "${errors[@]}"; do print_error "$err"; done
-        return 1
-    else
-        print_pass "$team_name: Structure valid"
-        return 0
-    fi
-}
-
-# Validate team CONTENT
-# Rules: T-CON-01 to T-CON-05
-# Returns: 0 if valid, 1 if errors found
-validate_team_content() {
-    local team_file="$1"
-    local team_name=$(basename $(dirname "$team_file"))
-    local errors=()
-    local warnings=()
-    local infos=()
-
-    # T-CON-01: directory naming format
-    if ! echo "$team_name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
-        errors+=("T-CON-01: Directory name must match ^[a-z0-9]+(-[a-z0-9]+)*\$ (got '$team_name')")
-    fi
-
-    # T-CON-02: description has trigger keywords
-    local description=$(grep "^description:" "$team_file" | head -1 | cut -d: -f2- | sed 's/^[[:space:]]*//')
-    if [ -n "$description" ] && ! echo "$description" | grep -qiE "$TEAM_KEYWORDS"; then
-        errors+=("T-CON-02: Description lacks trigger keywords")
-    fi
-
-    # T-CON-03: core principles section (required)
-    if ! grep -qE "^#+ *(核心原则|Core Principles)" "$team_file"; then
-        errors+=("T-CON-03: Missing core principles section")
-    fi
-
-    # T-CON-04: init.sh exists (optional)
-    local init_script="$(dirname "$team_file")/init.sh"
-    if [ ! -f "$init_script" ]; then
-        infos+=("T-CON-04: No init.sh script found")
-    fi
-
-    # T-CON-05: quickstart.md exists (optional)
-    local quickstart="$(dirname "$team_file")/quickstart.md"
-    if [ ! -f "$quickstart" ]; then
-        infos+=("T-CON-05: No quickstart.md found")
-    fi
-
-    # Output
-    if [ ${#errors[@]} -gt 0 ]; then
-        print_fail "$team_name: ${#errors[@]} error(s), ${#warnings[@]} warning(s)"
-        for err in "${errors[@]}"; do print_error "$err"; done
-        for warn in "${warnings[@]}"; do print_warn "$warn"; done
-        for info in "${infos[@]}"; do print_info "$info"; done
-        return 1
-    elif [ ${#warnings[@]} -gt 0 ]; then
-        print_pass "$team_name: Valid (${#warnings[@]} warning(s))"
-        for warn in "${warnings[@]}"; do print_warn "$warn"; done
-        for info in "${infos[@]}"; do print_info "$info"; done
-        return 0
-    else
-        print_pass "$team_name: Content valid"
-        for info in "${infos[@]}"; do print_info "$info"; done
-        return 0
-    fi
-}
 
 # =============================================================================
 # Session Analysis
@@ -1178,11 +878,17 @@ count_tool_invocations() {
         return
     fi
 
-    local count=$(grep -c "\"name\":\"$tool_name\"" "$session_file" 2>/dev/null || echo "0")
-    echo "$count"
+    # grep -c prints one count per input file; when grep exits non-zero (no
+    # match) under `set -e` the fallback can leak "0\n0". Force-feed via stdin,
+    # strip non-digits, and emit a single integer.
+    local count
+    count=$(grep -c "\"name\":\"$tool_name\"" "$session_file" 2>/dev/null | tr -cd '0-9' || true)
+    echo "${count:-0}"
 }
 
 # Check for premature action (tools invoked before skill)
+# Whitelist: Skill, TodoWrite, TaskOutput (strict — used by tools/analyze-*.sh)
+# See also: analyze_premature_actions() which uses a broader whitelist for behavior tests
 # Usage: check_premature_action "$session_file" "skill-name"
 check_premature_action() {
     local session_file="$1"
@@ -1232,32 +938,6 @@ get_triggered_skills() {
 # Advanced Session Analysis
 # =============================================================================
 
-# Analyze workflow sequence in session
-# Usage: analyze_workflow_sequence "$session_file"
-# Returns: ordered list of tool invocations
-analyze_workflow_sequence() {
-    local session_file="$1"
-    
-    if [ ! -f "$session_file" ]; then
-        echo "[]"
-        return 1
-    fi
-    
-    # Extract tool invocations in order
-    local sequence=""
-    if command -v jq &> /dev/null; then
-        sequence=$(jq -s '[.[] | select(.message.content != null) | .message.content[]? | select(.type == "tool_use") | {tool: .name, input: .input}]' "$session_file" 2>/dev/null || echo "[]")
-    else
-        # Fallback: grep for tool names
-        sequence=$(grep -o '"name":"[^"]*"' "$session_file" 2>/dev/null | \
-            grep -v '"name":"user"' | \
-            grep -v '"name":"assistant"' | \
-            sed 's/"name":"//;s/"$//' | \
-            awk '{tools = tools "\"" $0 "\","} END {print "[" substr(tools, 1, length(tools)-1) "]"}' || echo "[]")
-    fi
-    
-    echo "$sequence"
-}
 
 # Analyze tool call chain in session
 # Usage: analyze_tool_chain "$session_file"
@@ -1389,55 +1069,43 @@ extract_plugin_version() {
     fi
 }
 
-# Extract skills list from plugin.json
-# Usage: extract_plugin_skills "/path/to/plugin.json"
-# Returns: space-separated list of skill paths (relative)
-extract_plugin_skills() {
+# Extract array items from plugin.json by field name
+# Usage: _extract_plugin_json_array "/path/to/plugin.json" "skills"
+_extract_plugin_json_array() {
     local plugin_json="$1"
+    local field_name="$2"
     if [ -f "$plugin_json" ]; then
-        # Extract skills array items
-        local in_skills=false
+        local in_array=false
         while IFS= read -r line; do
-            if echo "$line" | grep -q '"skills"'; then
-                in_skills=true
+            if echo "$line" | grep -q "\"${field_name}\""; then
+                in_array=true
                 continue
             fi
-            if $in_skills; then
+            if $in_array; then
                 if echo "$line" | grep -q '^\s*\]'; then
                     break
                 fi
-                local skill=$(echo "$line" | sed 's/.*"\(\.[^"]*\)".*/\1/' | tr -d '[:space:]')
-                if [ -n "$skill" ] && [ "$skill" != "$line" ]; then
-                    echo "$skill"
+                local item=$(echo "$line" | sed 's/.*"\(\.[^"]*\)".*/\1/' | tr -d '[:space:]')
+                if [ -n "$item" ] && [ "$item" != "$line" ]; then
+                    echo "$item"
                 fi
             fi
         done < "$plugin_json"
     fi
 }
 
+# Extract skills list from plugin.json
+# Usage: extract_plugin_skills "/path/to/plugin.json"
+# Returns: space-separated list of skill paths (relative)
+extract_plugin_skills() {
+    _extract_plugin_json_array "$1" "skills"
+}
+
 # Extract agents list from plugin.json
 # Usage: extract_plugin_agents "/path/to/plugin.json"
 # Returns: space-separated list of agent file paths (relative)
 extract_plugin_agents() {
-    local plugin_json="$1"
-    if [ -f "$plugin_json" ]; then
-        local in_agents=false
-        while IFS= read -r line; do
-            if echo "$line" | grep -q '"agents"'; then
-                in_agents=true
-                continue
-            fi
-            if $in_agents; then
-                if echo "$line" | grep -q '^\s*\]'; then
-                    break
-                fi
-                local agent=$(echo "$line" | sed 's/.*"\(\.[^"]*\)".*/\1/' | tr -d '[:space:]')
-                if [ -n "$agent" ] && [ "$agent" != "$line" ]; then
-                    echo "$agent"
-                fi
-            fi
-        done < "$plugin_json"
-    fi
+    _extract_plugin_json_array "$1" "agents"
 }
 
 # Validate SemVer format
@@ -1464,84 +1132,6 @@ compute_file_hash() {
     fi
 }
 
-# Save version state for a team
-# Usage: save_version_state "ops-direct-invoke" "1.0.0"
-# Uses global variables: SKILLS_HASH, AGENTS_HASH (associative arrays)
-save_version_state() {
-    local team_name="$1"
-    local version="$2"
-
-    mkdir -p "$VERSION_STATE_DIR"
-    local state_file="$VERSION_STATE_DIR/$team_name.json"
-
-    # Build JSON
-    local skills_json="{"
-    local first=true
-    for skill_name in "${!SKILLS_HASH[@]}"; do
-        if $first; then first=false; else skills_json+=","; fi
-        skills_json+="\"$skill_name\":\"${SKILLS_HASH[$skill_name]}\""
-    done
-    skills_json+="}"
-
-    local agents_json="{"
-    first=true
-    for agent_name in "${!AGENTS_HASH[@]}"; do
-        if $first; then first=false; else agents_json+=","; fi
-        agents_json+="\"$agent_name\":\"${AGENTS_HASH[$agent_name]}\""
-    done
-    agents_json+="}"
-
-    cat > "$state_file" <<EOF
-{
-  "version": "$version",
-  "timestamp": "$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')",
-  "skills": $skills_json,
-  "agents": $agents_json
-}
-EOF
-}
-
-# Load version state for a team
-# Usage: load_version_state "ops-direct-invoke"
-# Sets: LOADED_VERSION, LOADED_SKILLS, LOADED_AGENTS (space-separated key:hash pairs)
-load_version_state() {
-    local team_name="$1"
-    local state_file="$VERSION_STATE_DIR/$team_name.json"
-
-    LOADED_VERSION=""
-    LOADED_SKILLS=""
-    LOADED_AGENTS=""
-
-    if [ ! -f "$state_file" ]; then
-        return 1
-    fi
-
-    LOADED_VERSION=$(extract_plugin_version "$state_file")
-    # Parse skills and agents from state JSON
-    if command -v python3 &>/dev/null; then
-        LOADED_SKILLS=$(python3 -c "
-import json, sys
-with open('$state_file') as f:
-    data = json.load(f)
-for k,v in data.get('skills',{}).items():
-    print(f'{k}:{v}')
-" 2>/dev/null || true)
-        LOADED_AGENTS=$(python3 -c "
-import json, sys
-with open('$state_file') as f:
-    data = json.load(f)
-for k,v in data.get('agents',{}).items():
-    print(f'{k}:{v}')
-" 2>/dev/null || true)
-    else
-        # Fallback: simple grep
-        LOADED_SKILLS=$(grep -oE '"[a-z0-9_-]+":"[a-f0-9]+"' "$state_file" | tr -d '"' | sed 's/:/ /' || true)
-        LOADED_AGENTS=""
-    fi
-
-    return 0
-}
-
 # Recommend version bump based on changes
 # Usage: recommend_version_bump "1.0.0" true false
 # Args: current_version, skill_changed, agent_changed
@@ -1559,12 +1149,8 @@ recommend_version_bump() {
     local major minor patch
     IFS='.' read -r major minor patch <<< "$current"
 
-    if [ "$agent_changed" = "true" ]; then
-        # Agent change → bump MINOR, reset PATCH
-        minor=$((minor + 1))
-        patch=0
-    elif [ "$skill_changed" = "true" ]; then
-        # Skill change → bump PATCH
+    # Any change (skill or agent) → bump PATCH
+    if [ "$skill_changed" = "true" ] || [ "$agent_changed" = "true" ]; then
         patch=$((patch + 1))
     fi
 
@@ -1720,21 +1306,14 @@ print_test_banner() {
 # Export Functions
 # =============================================================================
 
-export -f detect_platforms
 export -f is_platform_available
 export -f get_platform_version
 export -f create_test_project
 export -f cleanup_test_project
 export -f run_claude
-export -f run_opencode
-export -f run_ai
-export -f assert_contains
-export -f assert_not_contains
-export -f assert_count
 export -f assert_order
 export -f assert_file_exists
 export -f check_file_links
-export -f extract_agent_skills
 export -f run_behavior_test
 export -f analyze_premature_actions
 export -f get_all_skills
@@ -1750,16 +1329,15 @@ export -f validate_skill_structure
 export -f validate_skill_content
 export -f validate_agent_structure
 export -f validate_agent_content
-export -f extract_team_skills
 export -f validate_team_structure
 export -f validate_team_content
+export -f validate_global_uniqueness
 export -f find_recent_session
 export -f verify_skill_invoked
 export -f verify_agent_dispatched
 export -f count_tool_invocations
 export -f check_premature_action
 export -f get_triggered_skills
-export -f analyze_workflow_sequence
 export -f analyze_tool_chain
 export -f analyze_cost_breakdown
 export -f extract_token_usage
@@ -1787,8 +1365,6 @@ export -f extract_plugin_skills
 export -f extract_plugin_agents
 export -f validate_semver
 export -f compute_file_hash
-export -f save_version_state
-export -f load_version_state
 export -f recommend_version_bump
 export -f semver_compare
 export LIB_DIR TESTS_DIR SKILLS_DIR

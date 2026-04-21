@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 # =============================================================================
 # Test: Team Content
 # =============================================================================
@@ -6,21 +15,13 @@
 # Rules tested:
 # - T-CON-01: directory naming format ^[a-z0-9]+(-[a-z0-9]+)*$
 # - T-CON-02: description contains trigger keywords
-# - T-CON-03: has core principles section
-# - T-CON-04: init.sh exists (optional)
-# - T-CON-05: quickstart.md exists (optional)
+# - T-CON-03: description contains trigger conditions (warning: REQUIRED: when to use)
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/test-helpers.sh"
-
-echo "=== Test: Team Content ==="
-echo ""
-echo "This test validates content quality for all teams."
-echo "Run time: ~10 seconds (no CLI needed)"
-echo ""
 
 # Counters
 total_teams=0
@@ -37,7 +38,7 @@ echo ""
 # ============================================
 # Validate all teams content
 # ============================================
-print_section_header "Test: Team Content (T-CON-01 to T-CON-05)"
+print_section_header "Test: Team Content (T-CON-01..03)"
 
 for team in $ALL_TEAMS; do
     team_file=$(find_team_file "$team")

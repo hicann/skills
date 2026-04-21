@@ -1,11 +1,9 @@
 ---
-
-## name: tilelang-api-best-practices
+name: tilelang-api-best-practices
 description: TileLang Ascend API 使用最佳实践。提供内存分配、数据搬运、矩阵计算、归约、元素级运算、同步、调度原语等 API 的正确用法和最佳实践。触发：使用 TileLang API 编写 Ascend NPU kernel 时或遇到 API 相关问题时。
+---
 
 # TileLang Ascend API 最佳实践
-
----
 
 ## API 文档索引
 

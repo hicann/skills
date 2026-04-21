@@ -9,7 +9,7 @@
       "name": "ops-direct-invoke",
       "source": "./ops/teams/ops-direct-invoke",
       "description": "Ascend C Kernel 直调算子开发 Team（自包含）。含 3 个 Agent（architect/developer/reviewer）、11 个 Skill 和完整工作流（设计->实现->审查->性能验收）。",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": { "name": "CANNBot" },
       "keywords": ["ascendc", "kernel", "direct-invoke", "operator"],
       "category": "development"
@@ -18,7 +18,7 @@
       "name": "pypto-op-orchestrator",
       "source": "./ops/teams/pypto-op-orchestrator",
       "description": "PyPTO 算子端到端开发 Team（自包含）。含 3 个 Subagent（analyst/developer/perf-tuner）、8 个 Skill，7 阶段状态机编排，支持断点续跑和失败恢复。",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": { "name": "CANNBot" },
       "keywords": ["pypto", "operator", "orchestrator", "state-machine"],
       "category": "development"
