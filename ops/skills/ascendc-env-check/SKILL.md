@@ -38,7 +38,7 @@ npu-smi top
 bash scripts/npu_info.sh
 ```
 
-详细命令参数见 [npu_commands.md](references/npu_commands.md)
+详细命令参数见 [npu_commands.md](references/npu_commands.md)，npu-smi 不可用时的回退方案见 [asys_commands.md](references/asys_commands.md)
 
 ## CANN 环境检查
 
