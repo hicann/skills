@@ -19,13 +19,13 @@
 - 环境信息：operators/{operator_name}/docs/environment.json
 
 【输出】
-- 技术设计：operators/{operator_name}/docs/DESIGN.md
-- 开发计划：operators/{operator_name}/docs/PLAN.md
+- 技术设计：operators/{operator_name}/docs/DESIGN.md，参考`workflows/templates/design-template.md`
+- 开发计划：operators/{operator_name}/docs/PLAN.md，参考`workflows/templates/plan-template.md`
 
 【验收标准】
 - DESIGN.md 和 PLAN.md 都已创建
 - 设计包含：Tiling 策略、API 映射、数据流、分支场景
-- 计划包含：文件清单、测试计划
+- 计划包含：文件清单、测试计划、PyTorch 接入
   "
 }
 ```
@@ -35,7 +35,7 @@
 ## Step 2.5：设计串讲
 
 ### 2.5a — Developer 串讲审查
-``` 
+```
 {
   "description": "设计串讲",
   "subagent_type": "ascendc-kernel-developer",
@@ -198,7 +198,7 @@ Step D: 添加测试用例和精度验证 → 运行通过
 
 【验收标准】
 - 编译成功（cmake .. && make）
-- 基础用例测试通过（NPU 可用时）
+- 基础用例 可执行文件、PyTorch接入通路 测试通过（NPU 可用时）
 - PLAN.md 已更新进度
   "
 }

@@ -9,48 +9,28 @@
 # ----------------------------------------------------------------------------------------------------------
 
 # ============================================================================
-# CMake 构建配置 - Ascend C Kernel 直调
+# Golden 计算（双通路共用）
 # ============================================================================
 #
 # [MODIFY] 创建新算子时修改:
-# 1. add_executable 的目标名和源文件名
-# 2. target_compile_options 中的目标名
+# 1. compute_golden(): 替换为你的算子的正确计算逻辑
+#
+# 本文件被 gen_data.py 和 test_torch.py 共同引用，
+# 修改此处即同时更新两条通路的 golden 基准。
 # ============================================================================
 
-cmake_minimum_required(VERSION 3.16)
+import numpy as np
 
-find_package(ASC REQUIRED)
 
-# [MODIFY] 工程名 add_custom → <your_op>_coustom	 
- project(add_custom LANGUAGES ASC CXX) 
- 
- 
- # [MODIFY] 目标名 add_custom → <your_op>_coustom，源文件 add.asc → <your_op>.asc	 
- add_executable(add_custom add.asc)	 
- 
- 
- # [MODIFY] 工程名 add_custom → <your_op>_coustom 
- target_link_libraries(add_custom PRIVATE 
-     tiling_api 
-     register 
-     platform 
-     unified_dlog 
-     dl 
-     m 
-     graph_base 
- ) 
- 
- 
- # [MODIFY] 工程名 add_custom → <your_op>_coustom 
- target_include_directories(add_custom PRIVATE 
-     ${CMAKE_CURRENT_SOURCE_DIR} 
- )
+# [MODIFY] 替换为你的算子的正确计算逻辑
+def compute_golden(x1, x2):
+    """计算算子的参考输出。
 
-# [CONFIG] NPU 架构配置
-# - dav-2201: Atlas A2 系列（默认）
-# - dav-3510: Atlas A5 系列
-# 更多架构详见 ascendc-npu-arch skill
-# [MODIFY] 工程名 add_custom → <your_op>_coustom	 
-target_compile_options(add_custom PRIVATE
-    $<$<COMPILE_LANGUAGE:ASC>:--npu-arch=dav-2201>
-)
+    Args:
+        x1: numpy array 或 torch.Tensor
+        x2: numpy array 或 torch.Tensor
+
+    Returns:
+        与输入同类型的参考输出
+    """
+    return x1 + x2

@@ -5,6 +5,7 @@ skills:
   - ascendc-docs-search
   - ascendc-precision-debug
   - ascendc-env-check
+  - torch-ascendc-op-extension
 permission:
   external_directory: allow
 ---

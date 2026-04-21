@@ -1,6 +1,6 @@
 # Ascend C Kernel 直调进阶
 
-> 基础用法和修改指南见 `add_kernel/add.asc` 中的注释。本文档提供深入理解。
+> 基础用法和修改指南见 `add_custom/op_host/add_custom.asc` 中的注释。本文档提供深入理解。
 
 ## 内存层次与数据流
 

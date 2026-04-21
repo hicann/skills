@@ -9,6 +9,7 @@ skills:
   - ascendc-precision-debug
   - ops-profiling
   - ascendc-direct-invoke-template
+  - torch-ascendc-op-extension
   - ascendc-runtime-debug
 permission:
   edit: allow
@@ -131,7 +132,7 @@ Ascend C 算子开发专家，负责根据 Architect 的设计方案（或直接
 
 #### 阶段 3：功能测试
 
-**目标**：通过多级测试。
+**目标**：通过多级测试、覆盖PyTorch接入测试。
 
 **准备工作**：
 - 完善 `gen_golden.py` 测试数据生成
@@ -152,6 +153,7 @@ Level 2: 极值/零值  -> 边界情况验证
 - [ ] Level 1 测试通过（1K 元素）
 - [ ] Level 2 测试通过（极值/零值）
 - [ ] 非对齐场景测试通过
+- [ ] PyTorch接入测试通过（必选）
 
 #### 阶段 3.5：性能采集与优化
 

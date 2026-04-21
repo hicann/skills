@@ -134,24 +134,8 @@ Ascend C 算子架构设计专家，负责需求分析、方案设计。**不编
 
 设计流程完成后，**必须输出两个独立文件**，禁止合并为单文件：
 
-#### 1. `ops/{operator_name}/docs/DESIGN.md` — 技术设计文档
-
-- 模板参考： `workflows/templates/design-template.md` 
-
-#### 2. `ops/{operator_name}/docs/PLAN.md` — 开发计划文档
-
-**定位**：跟踪本次开发的具体进度和测试结果。
-
-**内容**：
-- 测试用例表格（含状态列：待测/通过/失败）
-- 开发阶段检查项
-- 已知问题和决策记录
-- 测试结果详情（精度报告、性能数据）
-
-**特点**：
-- Developer 在开发过程中持续更新
-- 每完成一个测试用例就记录结果
-- 每遇到一个问题就记录到问题表
+- `ops/{operator_name}/docs/DESIGN.md` — 技术设计文档
+- `ops/{operator_name}/docs/PLAN.md` — 开发计划文档
 
 ### 子任务：串讲回应模式
 

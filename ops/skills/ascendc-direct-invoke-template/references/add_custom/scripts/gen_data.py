@@ -17,11 +17,13 @@
 # 1. total_length: 总元素数（需与 add.asc 中的保持一致）
 # 2. dtype: 数据类型（需与 add.asc 中的保持一致）
 # 3. 输入数据: 根据你的算子生成对应的输入
-# 4. golden 计算: 替换为你的算子的正确计算结果
+# 4. golden 计算: 修改 golden.py 中的 compute_golden()
 # ============================================================================
 
 import numpy as np
 import os
+
+from golden import compute_golden
 
 os.makedirs("input", exist_ok=True)
 os.makedirs("output", exist_ok=True)
@@ -37,8 +39,8 @@ y = np.random.randn(total_length).astype(dtype)
 x.tofile("input/input_x.bin")
 y.tofile("input/input_y.bin")
 
-# [MODIFY] 计算 golden（替换为你的算子的正确计算逻辑）
-golden = x + y
+# [MODIFY] 计算 golden（逻辑定义在 golden.py 中，修改那里即可）
+golden = compute_golden(x, y)
 golden.tofile("output/golden.bin")
 
 print(f"Generated test data: {total_length} elements, dtype={dtype}")

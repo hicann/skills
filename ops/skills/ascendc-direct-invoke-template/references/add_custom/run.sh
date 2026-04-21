@@ -15,6 +15,7 @@
 # 用法：
 #   bash run.sh              # 完整流程（含编译）
 #   bash run.sh --skip-build # 跳过编译，复用已有产物（代码审查阶段使用）
+#   bash run.sh --torch      # 跳过可执行文件通路，只跑 PyTorch 通路
 #
 # 退出码：
 #   0  全部步骤成功
@@ -29,9 +30,13 @@ cd "${SCRIPT_DIR}"
 OP_NAME="add"
 
 SKIP_BUILD=0
-if [ "${1:-}" == "--skip-build" ]; then
-    SKIP_BUILD=1
-fi
+TORCH_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-build) SKIP_BUILD=1 ;;
+        --torch)      TORCH_ONLY=1 ;;
+    esac
+done
 
 # 统一错误输出函数
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -39,6 +44,14 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 echo "=== [1/4] 设置 CANN 环境 ==="
 [ -n "${ASCEND_HOME_PATH:-}" ] || die "ASCEND_HOME_PATH 未设置，请先配置 CANN 环境"
 source "${ASCEND_HOME_PATH}/set_env.sh" || die "set_env.sh 执行失败"
+
+if [ "${TORCH_ONLY}" -eq 1 ]; then
+    echo "=== PyTorch 通路验证 ==="
+    cd build
+    python3 ../scripts/test_torch.py || die "PyTorch 通路验证失败"
+    echo "=== 完成 ==="
+    exit 0
+fi
 
 if [ "${SKIP_BUILD}" -eq 1 ]; then
     [ -f "build/${OP_NAME}" ] || die "--skip-build 指定但 build/${OP_NAME} 不存在，请先完整编译"
@@ -64,6 +77,10 @@ rm -f output/output.bin
 echo "=== 精度验证 ==="
 python3 ../scripts/verify_result.py output/output.bin output/golden.bin \
     || die "精度验证失败（verify_result.py 返回非零）"
+
+echo "=== PyTorch 通路验证 ==="
+python3 ../scripts/test_torch.py \
+    || die "PyTorch 通路验证失败（test_torch.py 返回非零）"
 
 echo "=== 完成 ==="
 exit 0
