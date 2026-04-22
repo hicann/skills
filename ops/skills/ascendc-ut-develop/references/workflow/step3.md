@@ -20,6 +20,8 @@ cp ${op_path}/tests/ut/${test_model}/*.cpp ${op_path}/tests/ut/${test_model}/*.h
 
 根据用户的需求，搭建新的 UT 框架，确认可编译通过
 
+**算子的 UT 代码，需要放置在算子的目录下，而不是代码仓根目录下的 test 目录**
+
 **注意，仅迁移一条预期执行成功的旧用例**，用于验证框架是否正常，**迁移所有用例是后续步骤的任务**
 
 如果 `${repo_type}` 为 **"ops-transformer"** 且用户提及 **"CSV"**、**"CSV整改"**、**"CSV格式"**、**"CSV化"**，执行 **CSV 格式重构**:
