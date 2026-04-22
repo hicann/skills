@@ -3,261 +3,270 @@ name: ascendc-registry-invoke-to-direct-invoke
 description: 当用户想把自定义算子工程中的 kernel 模板改造成 `<<<>>>` kernel 直调形式，或从自定义算子工程中抽取某个 kernel 模板并转换成 `<<<>>>` 直调方式时使用。触发：用户提到"自定义算子转直调"、"从算子工程抽 kernel"、"kernel 模板改 `<<<>>>`"等。不适用于从零开发新算子
 ---
 
-# AscendC 自定义算子转 `<<<>>>` kernel 直调改造
+# AscendC 自定义算子转 `<<<>>>` kernel 直调
 
-这个 skill 处理的是两类任务：
-1. **把已有 AscendC 自定义算子改造成 `<<<>>>` kernel 直调形态**
-2. **从某个现有模板或算子实现中抽取 kernel/tiling/host 关键部分，并转换成 `<<<>>>` 方式**
+## 一句话原则
 
-目标不是“把文件复制过来”，而是识别并拆解现有实现里的 kernel、tiling、host glue 与外部依赖，把它整理成一个 **本地可维护、依赖闭环清晰、kernel 语义不变、可直接 launch** 的版本。
+**这是算子代码迁移，不是代码重写。**
 
-## 默认处理范围
+`<<<>>>` 直调模式下，原算子工程的"注册框架"不存在了。必须要改的只有这套框架胶水——其余一切保持零修改。
 
-它默认解决的是：
-- 从 `op_kernel/archXX` 或类似源树中抽出 header-only / inline kernel 代码
-- 删除 `#include "..` 开头的跨目录依赖
-- 把真正需要的函数 / 常量 / traits / helper 收口到本地
-- 在保持 kernel 计算语义不变的前提下，补齐现有算子转 `<<<>>>` kernel 直调所需的最小必要改写
-
-它默认 **不处理**：
-- `aclnn` / `OpDef` / 注册流程
-- 完整的新算子设计与开发
-
-它可以处理两类任务：
-1. **kernel-only 去耦 / 自包含**
-2. **kernel + tiling + `<<<>>>` 直调入口 / standalone sample host glue 适配**
-
-如果用户已经明确告诉你：
-- kernel 代码在哪里
-- tiling 代码在哪里
-
-就不要再拆成两个技能链路，直接按同一条自定义算子转直调工作流推进。
+如果你发现自己在修改 kernel 类的成员函数、"优化"tiling 公式、合并分支写法、"顺手"重命名字段——停下。你越界了。
 
 ---
 
-## 先判断任务属于哪一类
+## 核心三原则
 
-优先把任务识别为以下一种：
+### 原则 1：kernel 实现代码零修改
 
-1. **kernel 本地化搬运**
-   - 例如：把 `arch35/` 目录搬到当前路径，删掉相对 include，并把依赖函数搬到本地
-2. **kernel 头文件去耦**
-   - 例如：不再依赖 `../../rms_norm/...`、`../inc/platform.h`
-3. **最小依赖闭包提取**
-   - 例如：只搬 `DataCopyImpl` / `ComputeRstd` / `CeilDiv`，不整包复制上游头文件
-4. **kernel 入口本地落地**
-   - 例如：把 `*_apt.cpp` 一起放到目标目录，并显式指出还缺哪些外部宏/tiling 结构
+**"kernel 实现代码"范围**：
+- kernel 类定义（类体、成员变量、所有成员函数）
+- kernel 类调用的算法函数（Compute / DataCopy / Reduce / Cast 等）
+- 这些代码内部的控制流、循环、分支、计算顺序
 
-如果用户明确说：
-- “适配到 cann-samples”
-- “做 standalone story”
-- “要能独立编译运行的 story 工程”
+**唯一允许的修改只有 3 类**：
 
-则不要误判成“只做 kernel 去耦”；要按 **kernel + tiling + standalone sample/story host glue** 的完整链路处理。
+1. **include 指令替换**：把跨目录相对 `#include "../..."` 换成本地 include（到 `local_deps.h` 或 SDK 稳定头）
+2. **命名空间包装（可选）**：把原文件内容整体套进统一命名空间，避免 `using namespace AscendC` 污染包含方翻译单元
+3. **TilingData 类型来源替换**：原来通过 `BEGIN_TILING_DATA_DEF` 宏生成的 TilingData 类，改为来自本地 POD struct（字段名、字段类型、字段顺序与原宏 `TILING_DATA_FIELD_DEF` 一致，因此 kernel 中 `tl_->field` 的访问一行都不动）
+
+**不允许的修改**：
+- 合并或拆开成员函数（不要把 `CopyIn / CopyOut / Load / Compute` 这类方法合成一个）
+- 重命名字段、参数、局部变量
+- "顺手"优化循环结构、计算顺序、分支写法
+- 把类成员改成自由函数、或反过来
+- 删除看起来"没用"的成员变量或方法
+
+**判断标准**：从原算子工程同步新版本 kernel 时，应当能直接覆盖 kernel 实现文件，而不需要同步修改别处。如果做不到，说明你把框架胶水和算法代码混在同一个文件里了。
+
+### 原则 2：tiling 计算逻辑零修改
+
+**"tiling 计算逻辑"范围**：
+- 如何根据输入 shape 和平台参数计算 blockDim、baseRowLen、baseColLen、splitFactor 等切块参数
+- 所有数学公式、对齐运算、上/下取整
+- 分支判断（如 `is32BAligned == 1` vs `== 0`、fullload vs splitD 等）
+
+**唯一允许的修改只有 3 类**（均为"接口替换"，不是"逻辑改动"）：
+
+1. **平台接口替换**：`gert::TilingContext*` 获取平台参数 → `platform_ascendc::PlatformAscendCManager::GetInstance()`（功能等价）
+2. **框架胶水删除**：去掉 `IMPL_OP_OPTILING` / `REGISTER_TILING_DATA_CLASS` 注册宏；`OP_LOGE / OP_LOGI / OP_LOGD` 换成 `throw std::runtime_error` 或 `printf`
+3. **输入参数形态**：`gert::Shape` → 直接传 `uint64_t rowLen, colLen`；`ge::DataType` → 本地自定义 enum
+
+**不允许的修改**：
+- 合并对齐 / 非对齐分支（即使公式"看起来差不多"）
+- 把某分支特有的 `AlignUp(x, y)` 套到其他分支上
+- "统一"上/下取整、"统一"公式写法以追求代码简洁
+- 删除看似多余的边界判断、clamp、溢出检查
+- 调整乘除法的计算顺序
+
+**为什么这条特别重要**：改 tiling 数学极少立即编译错，但会悄悄改掉切块语义，让 correctness 或性能偏离上游实现。tiling 公式逐行搬运，分支独立保留，分母/分子按原样。
+
+### 原则 3：只改"注册框架胶水"
+
+真正必须改的只有 3 处——因为 `<<<>>>` 直调模式下这 3 处对应的宏 / 接口 / 分发机制根本不存在：
+
+1. **Kernel 入口**：原 `extern "C" __global__` + `GET_TILING_DATA` + `TILING_KEY_IS(N)` 运行时分发 → 按 tilingKey 划分维度拆成独立 `__global__` 函数、tiling struct by-value 入参
+2. **TilingData 定义**：`BEGIN_TILING_DATA_DEF` / `TILING_DATA_FIELD_DEF` / `END_TILING_DATA_DEF` 宏 → 普通 C++ POD struct
+3. **Host tiling 接口**：`gert::TilingContext*` → `PlatformAscendCManager::GetInstance()`；去掉注册宏和 OP_LOG
+
+除此以外，默认一切不动。
+
+---
+
+## 全量迁移优先
+
+**默认把原算子源码文件整体搬到目标目录，不做选择性裁剪。** 只有用户明确要求时才裁剪。
+
+### 全量搬运的对象（当前算子自己的源文件）
+
+- **kernel 实现头**：整文件搬，不挑成员函数、不删"没用的"方法
+- **TilingData struct**：保留 `BEGIN_TILING_DATA_DEF` 里定义的**所有字段**，不因"kernel 没访问"就删
+- **Host tiling 逻辑**：保留**所有 variant 路径**（grad / quant / fullload / splitD 等子分支），不选取单一路径
+- **入口文件**：整文件搬，不裁剪 tilingKey 分支
+
+### 什么时候允许裁剪
+
+只有用户明确提出，比如：
+- "只要 fullload 版本，grad 不要"
+- "tiling 里 quant 相关字段都可以删"
+- "fp32 路径不需要"
+
+裁剪时只删用户明确指定的内容，其它保持全量。
+
+### 为什么默认全量
+
+1. **保真性**：不用判断"这个字段/路径是否真用不到"。字段可能通过宏字符串化、SFINAE、模板特化间接使用，grep 找不到，一旦误删编译看不出，运行时才炸。
+2. **可同步性**：原算子更新新版本，可以直接覆盖目标文件而不需要重新做差分。这和原则 1 的"判断标准"完全一致。
+3. **和原则 1/2 形成闭环**：不仅不改代码，也不选择性删代码——二者一起才能做到"整文件可覆盖同步"。
+
+### 例外：外部依赖仍按最小闭包
+
+"全量迁移"只适用于**当前算子自己的源文件**。跨目录的外部依赖（上游 `*_base.h` / `*_common.h` / `norm_common/*` 等）仍然按**最小闭包**搬——这些是别人的代码，整包拖会把无关实现带进来、污染目标目录、扩大维护面。
+
+一句话区分：
+- **当前算子自己的 `.h` / `.cpp`** → **整文件搬**
+- **跨目录 include 过来的头** → **只搬 kernel 真正使用的符号**
+
+---
+
+## 信息来源约束
+
+执行本 skill 时需要区分两类"源"——算法源和约定源，它们的读取规则不同。
+
+### 算法源：只来自原始算子源码
+
+**原始算子源码**（用户提供的 kernel 源 + tiling 源）是所有算法逻辑和数学公式的**唯一**来源。
+
+这意味着以下内容不能从目标仓库的其他 sample / story 里复制或参考：
+- Kernel 计算逻辑、成员函数拆分
+- Tiling 数学公式、切块分支
+- 数据搬运 helper、规约实现
+- 算子特有的 traits、cast 辅助
+
+原因：目标仓里的其他 sample 实现的是别的算子，抄它们会污染当前算子的保真性。
+
+### 约定源：应该参考目标仓库对齐
+
+目标仓库里"怎么组织一个算子工程"的**工程约定**应当参考并保持一致——新算子不要发明和邻居不一致的新规矩。
+
+**应参考并对齐的工程约定**：
+- **目录布局**：如 `include/` vs `src/` 分层、kernel/tiling/host 放哪里、`cmake/` 子目录位置
+- **文件命名**：后缀用 `.h` / `.hpp`；前缀/后缀规则（`_kernel` / `_entry` / `_tilingdata` / `_tiling` 等命名惯例）；kernel 和 tiling 文件名怎么关联
+- **CMakeLists.txt 写法**：target_include_directories 组织、编译选项管理、依赖链接模式
+- **include 路径风格**：项目内部 include 用相对路径还是 `target_include_directories` 下的逻辑路径
+- **命名空间选择**：统一顶层命名空间（如 `project_name::op_name`）
+- **README / 测试目录的组织方式**
+
+**判断方法**：`Glob` 和 `Read` 目标仓库里 2–3 个同类 story / sample 的目录树、文件命名、CMakeLists.txt 骨架（只看组织结构，不看算法实现），归纳共同约定后采用。如果同类 story 之间约定就不一致，选影响面最大或最新维护的那个作为参考。
+
+### Host 驱动的算法无关样板
+
+Host 驱动里 ACL init / 内存管理 / 类型转换 / 结果比对 / `main` 骨架这些**算法无关**的部分，按优先级选择来源：
+
+1. 目标仓库有可参考的同类 story / sample → **对齐邻居写法**（细则见下文"Host 驱动来源决策"）
+2. 目标仓里没有参考对象 → 读 `references/host-driver-template.md` 作为起点
+3. 不涉及 host 驱动 → 跳过
+
+CMakeLists.txt 属于"工程约定"，一律按目标仓既有 cmake 体系对齐。
 
 ---
 
 ## 默认工作流
 
-> **信息来源约束**：执行本工作流时，只读两类代码：
-> 1. **原始算子源码**（用户提供的 kernel 源目录 + tiling 源目录）
-> 2. **本 skill 内嵌的模板和规则**
->
-> **不要读目标仓库（如 cann-samples）中的其他 sample、story、utils 或 cpp 文件来"参考写法"。** 所有 host 样板、CMakeLists.txt 结构、类型转换 trait、ACL 初始化模式等，均已内嵌在本 skill 的"Host 驱动代码模板"章节中。
+### Step 1: 确认交付边界，并对齐目标仓约定
 
-### Step 1: 先确认交付边界，再决定走 kernel-only 还是 `<<<>>>` 直调链路
-先确认这 3 件事：
-- **源目录**：通常是 `op_kernel/` 或 `op_kernel/archXX/`
-- **目标目录**：当前路径根、子目录，还是保留源层级
-- **交付边界**：只是 kernel 自包含，还是还要让 `*_apt.cpp` / tiling / `<<<>>>` 入口一并可独立编译调用
+先和用户确认 3 件事：
+- **源目录**：kernel 源 + tiling 源（tiling 源可能在 `op_host` 或类似位置，不同工程布局不同）
+- **目标目录**：放在当前路径根 / 子目录 / 保留源层级中的哪种——由用户决定，不预设
+- **交付边界**：只做 kernel 依赖解耦，还是要做到 kernel + tiling + host driver 可独立编译运行
 
-默认假设：
-- 先做 **kernel 代码适配**
-- 不主动扩展到 host / graph / 注册文件
-- 不重写算法逻辑，只做依赖适配
+**同时调研目标仓约定**：在目标仓库里 `Glob` + `Read` 2–3 个同类 story / sample（只看组织结构，不看算法），归纳：
+- 目录布局（include/src/cmake 的分层方式）
+- 文件命名规则（`.h` / `.hpp` 后缀、`_kernel` / `_entry` / `_tilingdata` 等后缀约定）
+- CMakeLists.txt 骨架
+- include 路径风格
+- 顶层命名空间
 
-但如果用户明确要求 standalone story / cann-samples / `<<<>>>` 直调：
-- 继续保持 **kernel 语义不变**
-- 同时把 tiling / host glue / 直调入口补齐到能在目标工程里独立维护
-- 仍然不要主动扩展到 `aclnn` / `OpDef` / 注册链路
+本算子的目录结构和文件命名**跟这些邻居约定对齐**，不要发明新规矩。如果同类 story 之间就不一致，选影响面最大或最新维护的那个参考。
 
-### Step 2: 盘点源文件集合
-用 `Glob` / `Read` / `Grep` 先确认：
-- 目录下有哪些 `.h` / `.cpp`
-- 哪个文件是入口文件（例如 `*_apt.cpp`）
-- 哪些是 `archXX` 特化头
-- 哪些文件已经是“局部本地化后的二次封装”
+不同算子工程的目录布局差异很大，不要硬套某种模板结构。用户给什么目录就基于什么目录推进，结合目标仓邻居的约定来决定具体文件怎么命名、放哪里。
 
-特别注意：
-- 很多 AscendC kernel 是 **header-only** 风格
-- 真正要搬运的实现，往往藏在 `common` / `regbase_common` / `base` 头里
+### Step 2: 源文件盘点
 
-### Step 3: 只追踪 `..` 相对 include，并建立“符号级依赖图”
-必须先找出所有：
+用 `Glob` / `Read` / `Grep` 弄清：
+- kernel 源目录下有哪些 `.h` / `.cpp`
+- 哪个是入口文件（命名可能是 `*_apt.cpp` / `*_invocation.cpp` / 其他）
+- kernel 实现是 header-only 还是有独立 `.cpp`
+- 哪些头文件已经是"从上游模板改造过的半本地化版本"（优先复用，不重建）
+- tiling 源文件位置（typically `op_host/xxx_tiling.cpp` 或类似）
+
+### Step 3: 追踪相对 include，建立符号级依赖图
+
+找出 kernel 文件中所有：
 - `#include "../..."`
 - `#include "../../..."`
 
-然后对每个相对 include 做两件事：
-1. 记录 **当前 kernel 文件真正使用了哪些符号**
-2. 记录这些符号的 **真实定义位置**
+对每个相对 include：
+1. 记录当前 kernel 真正使用了其中哪些符号（函数、常量、traits、类型、宏）
+2. 记录这些符号的**真实**定义位置
 
-不要因为某个头被 include 了，就整包复制整个头文件。
+不要因为某个头被 include 了就整包复制。特别警惕"表面归属 ≠ 真实定义"的转手依赖——`using A::foo`，但 `foo` 真实定义在命名空间 `B` 中，`A` 只是通过 include 间接暴露。迁移时要顺手修正 `using` 归属。
 
-输出时至少要列出：
-- 相对 include 路径
-- 被实际使用的函数 / 常量 / traits / 类型 / 宏
-- 是否存在“表面来自 A，实际定义在 B”的转手依赖
+### Step 4: 依赖解耦——整文件搬当前算子源码，外部依赖做最小闭包
 
-### Step 4: 优先选“保留原 kernel 文件 + 新增 local helper 头”的收口方式
-默认推荐结构：
-- 保留原始 kernel 文件主体
-- 新增一个同目录 helper，例如：`xxx_local_deps.h`
-- 把外部依赖的最小闭包集中搬到 helper 里
+本步骤执行"全量迁移优先"原则：
 
-只有在依赖非常少时，才考虑把外部内容直接塞回原头文件。
+- **当前算子源码文件**（kernel 实现头 / tiling 源 / 入口文件）→ **整文件搬**，结构、内容、分层一律不动（原则 1）。不挑成员函数、不删"没用"的方法、不裁剪 tilingKey 分支。
+- **跨目录的外部依赖** → **最小闭包搬到 `<op>_local_deps.h`**。
 
-推荐结构通常是：
-- `foo_regbase.h`
-- `foo_regbase_common.h`
-- `foo_regbase_split_d.h`
-- `foo_local_deps.h`
-- 可选：`foo_apt.cpp` 或 `foo_apt.h`
+`<op>_local_deps.h` 的职责：
+- SDK include（`kernel_operator.h` 必须；`simt_api/asc_bf16.h` 等按需）
+- 从上游搬来的最小外部依赖闭包（仅限 kernel 实际使用的符号）
 
-这样做的好处：
-- 原有 kernel 结构不散
-- 外部依赖边界清楚
-- 后续复查时容易区分“本地逻辑”和“搬运依赖”
+即使 kernel 文件没有 `..` 相对 include，也创建 `local_deps.h` 来统一收口 SDK include——好处是 kernel 实现头只 include 一个入口，后续增减 SDK 依赖只改一处。
 
-### Step 5: 只搬“最小依赖闭包”
-把依赖分成 4 类来搬。
+**外部依赖最小闭包分类**（注意：这张表只针对"跨目录搬过来的符号"，不包括当前算子自己的源码——自己的源码整文件搬）：
 
-#### 5.1 平台常量
-来自 `platform` 命名空间或平台头文件的常量/函数（如 `GetUbBlockSize`、`GetVRegSize`）。
+| 类别 | 典型内容 | 注意点 |
+|------|---------|--------|
+| 平台常量 | `GetUbBlockSize` / `GetVRegSize` 等 | 若只是返回固定常量，可改成 `constexpr` 小包装 |
+| 基础 traits | `is_same` / `bfloat16_t` 兼容定义 / 对齐工具 | 只搬需要的一小段，不要整份 `*_base.h` 拖过来 |
+| common 层工具 | `CeilDiv` / `CeilAlign` / cast 辅助 / 多级规约 | 最容易命名空间错位，核实真实定义源 |
+| 跨算子 helper | 从别的算子目录 include 过来的 `DataCopyImpl` / `ComputeXxx` 等 | 只搬 kernel 真正调用的函数，并补齐它们的直接闭包 |
 
-如果只是返回固定常量，优先改成：
-- 小型 `constexpr` 包装
-- 或直接在本地 helper 中保留最小 `platform` namespace 子集
+核心要求：**外部依赖只搬 kernel 真正调用到的**；**当前算子源码整文件搬**。不要整包拖上游 `*_common.h`，也不要擅自裁剪当前算子自己的文件。
 
-#### 5.2 基础常量 / traits
-来自 `*_base.h` 或公共头的基础定义，如 buffer 数量常量、对齐/取整工具函数（`CeilDiv` 等）、类型 traits（`is_same`、`bfloat16_t` 兼容定义等）。
+### Step 5: 入口改造（原则 3 第 1 项）
 
-这类通常来自某个 `*_base.h`，但真正需要的往往只是一小段，不要整包搬。
+原工程入口典型形态：
+```cpp
+extern "C" __global__ __aicore__ void op_name(GM_ADDR x, ..., GM_ADDR tiling) {
+    GET_TILING_DATA(t, tiling);
+    if (TILING_KEY_IS(1)) { KernelA<fp16>(...); }
+    else if (TILING_KEY_IS(0)) { KernelA<fp32>(...); }
+}
+```
 
-#### 5.3 common 层工具
-来自公共 common/reduce 层头文件的工具函数，如对齐函数（`CeilAlign`）、cast 辅助函数、多级规约函数等。
+`<<<>>>` 直调模式改为：
+- **按 tilingKey 的实际划分维度拆独立入口函数**。tilingKey 划分依据因算子而异（dtype、计算模式、shape 分支等），按原算子实际用什么维度分就怎么拆
+- 每个入口只实例化自己对应的模板路径
+- 去掉 `extern "C"`
+- 去掉 `GET_TILING_DATA` / `TILING_KEY_IS`
+- `GM_ADDR tiling` → `const XxxTilingData tilingData`（by value）
+- 如果原始代码有 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 等宏则保留；没有不要主动添加
 
-这类最容易出现”命名空间错位”。必须核实符号真实归属，而不是照抄 `using`。
+**入口函数的约束**（放在独立的 `<op>_entry.h` 等文件中，不要混进 kernel 实现头）：
+- 只做 3 件事：`AscendC::TPipe pipe;` → 构造 kernel 类对象 → `op.Init(...); op.Process();`
+- 不出现 `DTYPE_*` 宏、`GET_TILING_DATA`、`TILING_KEY_IS`——这些都属于原注册框架
+- 入口头 include `kernel_operator.h` + `<op>_tilingdata.h` + kernel 实现头
+- 避免在入口头里 `using namespace`，优先用 `::AscendC::...` 这类显式限定
 
-#### 5.4 算法 helper / regbase helper
-当前算子特有的计算辅助函数，如数据搬运 helper、规约计算函数、数学工具函数等。
+把入口单独放进独立头文件的原因：不污染原 kernel 文件的零修改属性（原则 1）。主机集成文件只 include 入口头，不直接 include kernel 实现头。
 
-只复制 **当前 kernel 真正调用到的函数**，并补齐它们的直接闭包。
-不要把整个上游 `*_common.h` / `*_regbase_common.h` 原样拖进目标目录。
+**关于模板 `__global__` 函数的已知问题**：`-xasc` 编译器在处理"模板 `__global__` + `<<<>>>` 调用"且模板参数为 `bfloat16_t` 时，`GM_ADDR`（`__gm__ uint8_t*`）参数会被错误 mangle 成 `__bf16`，链接时报 undefined symbol。遇到此问题改用显式命名的非模板入口（如 `op_fp32` / `op_fp16` / `op_bf16`）。
 
-### Step 6: 如果目标是 `<<<>>>` 直调 / standalone story，再补 tiling / host glue，但保持 kernel 独立
-当用户明确要 cann-samples / standalone story / `<<<>>>` 直调时：
-- 优先把 tiling struct 改成当前目录可见的 plain struct，或本地等价结构
-- 把 `op_host` 的 tiling 逻辑改成本地 helper，而不是继续绑定原工程注册框架
-- 让入口按当前 story 的 host dispatch 或 `<<<>>>` launch 方式工作，而不是继续依赖原工程分发宏
-- 保持 kernel 实现头尽量独立，host 逻辑只做最小串联
+**Host launch ABI 一致性**：如果入口参数是 `GM_ADDR`，host 侧 device 指针也从 `aclrtMalloc` 开始就保持 `GM_ADDR`：
+```cpp
+GM_ADDR inputDevice = nullptr;
+aclrtMalloc(reinterpret_cast<void**>(&inputDevice), size, ACL_MEM_MALLOC_HUGE_FIRST);
+op_fp32<<<tl.usedCoreNum, nullptr, stream>>>(inputDevice, ..., tilingData);
+aclrtFree(inputDevice);
+```
+不要先用 `void*` 持有，launch 时再 `reinterpret_cast<GM_ADDR>(voidPtr)`——AscendC 编译器会直接拒绝这种转换。
 
-这里的重点是：
-- **可以本地化 tiling 与 host glue**
-- **要把现有算子形态改造成可直接 launch 的入口**
-- **不要把任务扩展成正式 op 注册链路改造**
+### Step 6: TilingData 定义改造（原则 3 第 2 项）
 
----
+把 `BEGIN_TILING_DATA_DEF` / `TILING_DATA_FIELD_DEF` / `END_TILING_DATA_DEF` 机械替换成普通 C++ struct：
+- 不需要加 `#pragma pack`
+- 字段名、字段类型、字段顺序**与宏定义一致**
+- **默认保留所有字段**（按"全量迁移优先"原则）。即使 kernel 没访问某些字段，也不要主动删——可能通过宏字符串化、SFINAE 间接使用。只有用户明确要求裁剪（如"quant 字段都可以删"）时才删指定字段
+- 放在 `<op>_tilingdata.h`（仅依赖 `<cstdint>`，kernel 侧和 host 侧共用）
 
-## 决策规则
+### Step 7: Host tiling 接口替换（原则 3 第 3 项）
 
-### 规则 1：优先复用当前 kernel 目录里已经存在的“半本地化”文件
-如果源目录中已经有一个 `*_common.h` 明显是从上游算法模板改出来的：
-- 优先复用它
-- 只把缺失依赖补齐
-- 不要回退去重建另一套结构
+如果用户要求 host tiling 可独立编译：
 
-### 规则 2：对”表面归属”和”真实定义”保持怀疑
-典型坑：
-- `using A::someHelper;` — 但 `someHelper` 的真实定义其实在命名空间 `B` 中，`A` 只是通过 include 间接暴露
-- 例如：`using RmsNorm::castTraitB162B32;` 但真实定义在 `NormCommon`
-
-处理原则：
-- 以真实定义源为准
-- 迁移时顺手修正 `using` 归属
-- 不保留错误的中转命名空间引用
-
-### 规则 3：删除死引用，而不是机械保留
-如果某个 `using` 或 include 只是在源码里“看起来像要用”，但实际未被引用：
-- 直接删
-- 不做兼容性保留
-
-典型模式：
-- `using XXX::SomeHelper;` 只声明不使用（如原工程某个算子的 `DataCopyCustom`、`ReduceGrad` 等）
-
-### 规则 4：kernel 本地化完成，不等于入口文件可独立编译或直接 launch
-如果用户只要求 kernel 本地化，做到以下即可视为完成：
-- kernel 头文件不再依赖 `..` 相对 include
-- helper 头已收口最小依赖闭包
-
-但如果入口文件 `*_apt.cpp` 还依赖：
-- `DTYPE_X1`
-- `GET_TILING_DATA_WITH_STRUCT`
-- `TILING_KEY_IS`
-- 外部 tiling struct
-
-必须在结果里明确说明：
-- **kernel 已本地化**
-- **入口仍依赖外部编译环境**
-- 若要独立编译或直接 launch，需要继续本地化 tiling / dispatch / dtype 宏
-
-### 规则 5：如果用户要“可独立编译”，优先本地化 tiling struct 或改 host dispatch
-常见做法：
-- 把 tiling struct 改成 plain struct
-- 本地补 `GET_TILING_DATA_WITH_STRUCT` 依赖
-- 或改成 Host dispatch / by-value tiling，避免继续绑定原工程宏
-
-### 规则 6：如果 kernel 入口参数保持 `GM_ADDR`，host 侧 device 指针也从一开始就保持 `GM_ADDR`
-常见做法：
-- host 侧直接声明：`GM_ADDR inputDevice = nullptr;`
-- 用 `aclrtMalloc(reinterpret_cast<void**>(&inputDevice), size, ...)` 申请
-- kernel launch 时直接传 `inputDevice`
-- 用 `aclrtFree(inputDevice)` 释放
-
-不要这样做：
-- 先把 device 指针存成 `void*`
-- 或包在 `std::unique_ptr<void>` 里
-- 然后在 launch 点写 `reinterpret_cast<GM_ADDR>(ptr)`
-
-原因：
-- 这不是“风格问题”，而是 **AscendC 编译器会直接拒绝从 `void*` 到 `GM_ADDR` 的这种转换**
-- 一旦入口 ABI 决定保留 `GM_ADDR`，host 侧也要沿着这条 ABI 一致到底
-
-### 规则 8：TilingData 替换 `BEGIN_TILING_DATA_DEF` 时只需转成普通 C++ struct
-把 `BEGIN_TILING_DATA_DEF` / `TILING_DATA_FIELD_DEF` / `END_TILING_DATA_DEF` 宏机械替换成等价的 plain C++ struct 即可。不需要额外加 `#pragma pack(push, 1)`。
-
-只保留 kernel 实际访问的字段。原 tiling struct 里给其他 variant 用的字段（如 `activateLeft`、`biasIsEmpty`）直接删除。
-
-### 规则 9：`<<<>>>` 入口函数是否加 `KERNEL_TASK_TYPE_DEFAULT` 取决于原始代码
-如果原始 `*_apt.cpp` 中已有 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 等宏，适配时保留。如果原始代码没有，不要主动添加。这只是保持原样，不是 `<<<>>>` 直调的必要条件。
-
-### 规则 10：按 tilingKey 拆独立入口函数，而不是运行时 `TILING_KEY_IS` 分发
-原工程用单一 `extern “C”` 入口 + `TILING_KEY_IS(N)` 做运行时分发。tilingKey 的划分维度因算子而异——有时按 dtype（如 swi_glu 按 fp32/fp16/bf16），有时按计算模式（如 fullload/splitd），也可能按其他规则。`<<<>>>` 直调时改为：
-- 按 tilingKey 的实际划分维度拆成独立的 `__global__` 函数（如 `xxx_fp32()`、`xxx_fp16()` 或 `xxx_fullload()`、`xxx_splitd()`）
-- 各自只实例化对应的模板路径
-- Host 侧根据实际条件选择调用哪个函数
-- `extern “C”` 去掉
-- `GET_TILING_DATA(xxx, tiling)` 去掉，tiling 改成 `const XxxTilingData tilingData` by-value 传入
-
-### 规则 11：`local_deps.h` 即使无外部搬运依赖也要创建
-即使 arch35 kernel 头没有 `..` 相对 include，也要创建 `xxx_local_deps.h`，用来集中 SDK 相关 include：
-- `kernel_operator.h`（必须）
-- `simt_api/asc_bf16.h`（如果用到 `bfloat16_t`）
-- 其他按需添加
-
-这样做的好处是：kernel 实现头只 include 一个统一入口，后续增减 SDK 依赖时只改一处。
-
-### 规则 12：host tiling 用 `PlatformAscendCManager::GetInstance()` 替代 `gert::TilingContext`
-原工程 tiling 通过 `gert::TilingContext* context` 获取平台信息。独立工程中改为：
+**接口替换**（功能等价，不改数学）：
 ```cpp
 auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
 const NpuArch npuArch = ascendcPlatform->GetCurNpuArch();
@@ -265,728 +274,163 @@ uint64_t ubSize = 0;
 ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
 const uint32_t totalCore = ascendcPlatform->GetCoreNumAiv();
 ```
+需要 include `"platform/platform_ascendc.h"`。
 
-需要 include `”platform/platform_ascendc.h”`。
-
-同时去掉：
-- `OP_LOGE` / `OP_LOGI` / `OP_LOGD` → 改为 `throw std::runtime_error(...)` 或 `printf`
+**其他替换**：
+- `OP_LOGE` / `OP_LOGI` / `OP_LOGD` → `throw std::runtime_error(...)` 或 `printf`
 - `ge::DataType` → 自定义 enum
-- `gert::Shape` → 直接传 `uint64_t rowLen, colLen`
+- `gert::Shape` → 传 `uint64_t` 维度
 - `IMPL_OP_OPTILING` / `REGISTER_TILING_DATA_CLASS` → 直接删
 
-### 规则 13：host golden 计算优先用 C++ 内联，不依赖 Python
-standalone 工程的数据验证优先在 C++ 中完成：
-- 用确定性模式生成输入（如线性递推 + 取模），避免依赖 numpy/random seed 对齐
-- golden 计算用 float 精度完成后转回目标类型
+**数学逻辑严格保真**（再次强调原则 2）：
+- 对齐/非对齐分支独立保留
+- 分子 / 分母 / 上下取整按原样
+- **默认保留所有 variant 路径**（grad / quant / fullload / splitD 等）。按"全量迁移优先"原则，不要擅自删减路径；只有用户明确要求（如"只要 fullload"）才裁剪指定路径
+- 所有保留的路径内部逻辑一行不动
 
-### 规则 14：目标目录结构推荐 `include/kernel/` + `include/tiling/` + `src/` 分离
-```
-xxx_story/
-  include/
-    kernel/          # kernel 实现头 + local_deps.h + apt.h
-    tiling/          # SwiGluTilingData plain struct + host tiling calculator
-  src/
-    xxx_story.cpp    # host 驱动 (acl init, malloc, launch, verify)
-  CMakeLists.txt
-```
+### Step 8: `-xasc` host/device 双 pass 编译兼容（有条件触发）
 
-CMakeLists.txt 通过 `target_include_directories` 设置 include 搜索路径：
-```cmake
-target_include_directories(xxx PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/kernel
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/tiling
-)
-```
+**判断是否需要本节**：`Grep` kernel 实现头中是否出现 `MicroAPI::` / `Reg::` / `__VEC_SCOPE__` / `RegTensor` / `MaskReg`。没有就跳过本节。
 
-### 规则 15：区分"原始代码逻辑"和"适配改造部分"
-适配过程中必须清楚哪些代码是原始算子逻辑（计算、tiling 数学、数据搬运），哪些是为了脱离原工程框架而做的改造（入口拆分、宏替换、平台接口替换）。两者不要混在一起改：
-- **原始逻辑**：保真搬运，不改语义，不"优化"
-- **适配部分**：入口函数签名、TilingData struct 格式、平台 API 调用方式、框架宏替换
+`-xasc` 编译器对同一个 `.cpp` 做两次编译：host pass 定义 `__NPU_HOST__`，device pass 定义 `__NPU_ARCH__`。上述 MicroAPI/Reg 相关类型仅 device pass 可用。
 
-如果不确定某段代码属于哪一类，先看原始代码确认。
+**需要的改动**（仅针对使用了这些类型的实现头）：
 
-### 规则 16：适配结果必须自包含，不依赖目标仓库中的其他代码
-生成的 standalone story / `<<<>>>` 直调工程必须只依赖：
-- CANN SDK 头文件（`kernel_operator.h`、`platform_ascendc.h` 等）
-- ACL 运行时库（`aclrt*` 系列）
-- 标准 C++ 库
+1. 所有使用 MicroAPI/Reg 的 kernel 实现头，在 include 之后、namespace 开始前加 `#if !defined(__NPU_HOST__)`，文件末尾 namespace 关闭后加对应 `#endif`
+2. **不要**给 `local_deps.h` / `tilingdata.h` 等纯类型定义头加 guard——它们 host/device 两侧都需要可见
 
-不能依赖目标仓库（如 cann-samples）中的其他 sample、公共 utils、或共享头文件。所有需要的代码必须在 story 目录内闭环。
+**注意**：加 `__NPU_HOST__` guard 本质是对 kernel 实现头的 include 和宏保护的"包裹"，不是对 kernel 代码内容的修改。kernel 类体、算法函数本身仍然是零修改。
 
-### 规则 17：使用 MicroAPI/Reg 编程模型的 kernel 实现头必须用 `#if !defined(__NPU_HOST__)` 保护
-
-arch35 regbase kernel 大量使用 `AscendC::MicroAPI::RegTensor`、`MaskReg`、`CastTrait`、`DivSpecificMode` 等类型。这些类型仅在 device pass（`__NPU_ARCH__` 已定义）可用；host pass（`__NPU_HOST__ == 1`）不提供。
-
-如果不加保护，host pass 编译会报 `no template named 'RegTensor' in namespace 'AscendC::Reg'` 等大量错误。
-
-正确做法：
-- 所有使用 MicroAPI/Reg 的 kernel 实现头（`*_regbase_*.h`、`*_base.h`），在 `#include` 之后、namespace 开始之前加 `#if !defined(__NPU_HOST__)`，在文件末尾 namespace 关闭后加对应的 `#endif`
-- **不影响** `local_deps.h`、`tilingdata.h` 等纯类型定义头——它们在 host/device 两侧都需要可见
-
-判断依据：grep 文件中是否出现 `MicroAPI::`、`Reg::`、`__VEC_SCOPE__`、`RegTensor`、`MaskReg`。如果有，就需要 `__NPU_HOST__` guard。
-
-### 规则 18：`__global__` 入口函数用”body 内 `#if`”模式，不用”声明 + 定义分离”模式
-
-`-xasc` 编译器对 host 和 device pass 分别编译同一个 `.cpp` 文件。`__global__` 函数在 host pass 需要可见（生成 `<<<>>>` launch stub），在 device pass 需要有完整实现。
-
-**错误做法 1**：把 `__global__` 函数整体放在 `#if !defined(__NPU_HOST__)` 里
-- 结果：host pass 看不到函数声明 → `use of undeclared identifier` 错误
-
-**错误做法 2**：在 guard 外放 forward declaration，guard 内放定义
-- 结果：device pass 同时看到声明和定义 → `call is ambiguous` 错误
-
-**正确做法**：函数签名放在 guard 外，函数体内部用 `#if !defined(__NPU_HOST__)` 保护实现细节：
+**`__global__` 入口的兼容模式**：函数签名放在 guard 外（host pass 需要它生成 launch stub），函数体内部用 `#if !defined(__NPU_HOST__)` 保护实现：
 ```cpp
-__global__ __aicore__ void my_kernel(GM_ADDR x, ..., const TilingData td, uint32_t param)
-{
+__global__ __aicore__ void my_kernel(GM_ADDR x, ..., const TilingData td) {
 #if !defined(__NPU_HOST__)
-    // 完整 kernel 实现（使用 TPipe、MicroAPI 等 device-only 类型）
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
     MyKernelClass<...> op(&pipe);
-    op.Init(...);
-    op.Process();
+    op.Init(...); op.Process();
 #endif
 }
 ```
-host pass 编译出空函数体，compiler 据此生成 launch stub；device pass 编译完整实现。
 
-### 规则 19：`__global__` 入口不使用模板，改用显式非模板函数
+错误做法：
+- 把整个 `__global__` 函数放在 `#if !defined(__NPU_HOST__)` 里 → host pass 看不到函数声明，报 `use of undeclared identifier`
+- 在 guard 外放 forward declaration、guard 内放定义 → device pass 同时看到声明和定义，报 `call is ambiguous`
 
-`-xasc` 编译器在处理模板 `__global__` 函数 + `<<<>>>` 调用时，host pass 可能出现参数类型 mangling 错误。典型表现：
-- 模板参数为 `bfloat16_t` 时，`GM_ADDR` 类型的参数被错误推断为 `__bf16`
-- 链接时报 `undefined symbol`，符号签名中 `GM_ADDR` 参数变成了模板类型
+### Step 9: Host 驱动（可选）
 
-**错误做法**：
-```cpp
-template <typename xDtype, typename yDtype, bool hasSmooth, bool isSymmetrical>
-__global__ __aicore__ void dq_common_fullload(GM_ADDR x, ...);
-// 然后 host 调用:
-dq_common_fullload<bfloat16_t, int8_t, false, true><<<...>>>(xDev, ...);
-```
+如果用户要求独立可运行，按"Host 驱动来源决策"章节选择样板来源：目标仓有邻居 story 就对齐邻居；没有才读 `references/host-driver-template.md` 作为起点。
 
-**正确做法**：按 (xDtype, yDtype, hasSmooth, isSymmetrical) 组合创建显式命名的非模板函数：
-```cpp
-__global__ __aicore__ void dq_fullload_bf16_int8_nosmooth_sym(GM_ADDR x, ..., uint32_t useDb);
-```
-模板参数硬编码在函数名和函数体中。host 直接调用具名函数，无模板推断。
+---
 
-命名规范：`dq_{mode}_{xname}_{yname}_{smooth}_{sym}`
+## 输入校验策略（可选）
 
-### 规则 7：抽取 tiling 数学逻辑时，优先逐分支保真，不要擅自把不同分支”统一写法”
-尤其注意：
-- `is32BAligned == 1` 的路径
-- `is32BAligned == 0` 的路径
-- 分母到底是原始 `baseColLen`，还是 `AlignUp(baseColLen, ubMinBlockLen)`
+如果需要在主机侧做输入校验，拆成独立函数 `check_inputs()`，不要混进 Meta 函数或 shape inference（shape 推断和合法性校验是两件事）。
 
-典型例子：
-- 32B 对齐时：`baseRowLen = maxTileLen / baseColLen`
-- 非 32B 对齐时：`baseRowLen = maxTileLen / AlignUp(baseColLen, ubMinBlockLen)`
+**做**：
+- Attr 自身合法性（`bs > 0`）
+- 每个张量的 rank 和 dtype
+- 与 attr 或张量形状直接可推导的跨张量关系
 
-不要为了“代码更整齐”把两条公式都改成后一种。
+**不做**：
+- 依赖张量数值才能判定的关系（会触发 D2H 同步，违背 NPU 异步调度）
+- 调用方惯例差异导致的跨张量等量关系（校验过死会误伤合法用法）
 
-原因：
-- 这会改变 tiling 结果
-- 轻则性能漂移，重则和原始切块语义不一致
+原算子 `op_tiling` 里通常也没有数据依赖校验，保持对齐即可。
 
 ---
 
 ## 输出格式要求
 
-完成这类任务时，结果里至少要给出：
+完成任务时至少给出：
 
-1. **目标文件集合**
-   - 最终落地了哪些 `.h` / `.cpp`
-2. **被删除的相对 include**
-   - 精确到文件和 include 语句
-3. **本地化的依赖清单**
-   - 按来源头文件列出搬了哪些符号
-4. **helper 头职责**
-   - 为什么新增它、里面装了哪类依赖
-5. **剩余外部假设**
-   - 哪些宏 / tiling / dtype 仍依赖外部环境
-6. **静态验证结论**
-   - 是否已没有 `..` include
-   - 是否还有错误命名空间 `using`
+1. **目标文件集合**：最终落地了哪些 `.h` / `.cpp`
+2. **被删除的相对 include**：精确到文件和 include 语句
+3. **本地化的依赖清单**：按原来源头文件分组列出搬了哪些符号
+4. **`local_deps.h` 职责**：装了哪类依赖
+5. **剩余外部假设**：哪些宏 / tiling / dtype 仍依赖外部环境
+6. **静态验证结论**：`..` include / 错误命名空间 `using` / 本地闭包是否通过
 
-如果任务明确是 `<<<>>>` 直调 / standalone story / cann-samples，结果中还应补一句：
-- 当前版本是 **kernel-only 自包含**，还是已经做到 **kernel + tiling + direct-launch glue 闭环**
+若任务是 `<<<>>>` 直调 / standalone：明确说明当前版本是 "kernel-only 自包含" 还是 "kernel + tiling + direct-launch glue 闭环"。
 
 ---
 
 ## 验证清单
 
-快速执行时，直接按 `references/custom-op-to-kernel-launch-checklist.md` 做静态核验。
+详见 `references/custom-op-to-kernel-launch-checklist.md`。核心静态检查：
 
-注意：
-- 这个清单对 **自定义算子转直调过程中的 kernel 依赖清理** 最有用
-- 如果任务是 standalone story / `<<<>>>` 直调，它仍可用于检查 kernel 闭包是否干净，但不能替代你对 host tiling / direct-launch glue 的单独判断
-
-至少做以下静态检查：
-
-### 1. 相对 include 清理
-在目标文件集合中搜索：
-- `#include "../`
-- `#include "../../`
-
-期望：无匹配。
-
-### 2. 命名空间归属检查
-搜索所有 `using XXX::symbol` 语句，逐条核实符号的真实定义位置是否和 `using` 声明的命名空间一致。
-
-典型问题模式：`using A::foo`，但 `foo` 的真实定义在命名空间 `B` 中，`A` 只是通过 include 间接暴露了它。
-如果发现归属不一致，必须修正为真实定义源。
-
-### 3. 本地闭包检查
-确认 kernel 代码中所有非 SDK 符号（函数、常量、traits、类型别名）要么来自本地 helper 头，要么来自稳定 SDK 头。
-
-方法：在目标目录中 grep kernel 头文件引用的每个非 SDK 函数/常量，确认都能在本地解析。常见需要检查的类别：
-- 工具函数（如 `CeilDiv`、`CeilAlign`、各种 `Compute*` helper）
-- 平台常量（如 `GetUbBlockSize`、`GetVRegSize`）
-- 类型 traits（如 cast 辅助函数、`is_same`）
-- 业务常量（如 `BUFFER_NUM`、`V_LENGTH`）
-
-### 4. 死引用检查
-确认并删除：
-- 未使用的 `using`
-- 未使用的 include
-- 仅为历史兼容留下的空壳依赖
-
-### 5. 入口文件假设检查
-如果同时适配了 `*_apt.cpp` 或 `*_apt.h`，必须明确检查：
-- `DTYPE_X1`
-- `GET_TILING_DATA_WITH_STRUCT`
-- `TILING_KEY_IS`
-- tiling struct 是否本地可见
-
-### 6. Host launch ABI 一致性检查
-如果最终 direct-launch 入口参数仍然是 `GM_ADDR`，必须明确检查：
-- host 侧 device buffer 变量是不是也声明成 `GM_ADDR`
-- `aclrtMalloc` 是否按 `reinterpret_cast<void**>(&devicePtr)` 形式写入这个 `GM_ADDR` 变量
-- kernel launch 时是否直接传 `devicePtr`
-- 是否还残留 `reinterpret_cast<GM_ADDR>(voidPtr)` 这种调用点强转
-
-期望：
-- 没有 `void* -> GM_ADDR` 的临门一脚强转
-- host / launch / kernel 三侧 ABI 一致
-
-### 7. Tiling 公式逐分支等价性检查
-如果把 host tiling 从原工程提取成本地 helper，必须明确检查：
-- 对齐分支和非对齐分支是否仍然分别保留
-- 是否把原本分支不同的分母、上取整逻辑、上界逻辑误合并成同一套写法
-- 关键公式是否逐条和上游比对过，而不是“凭感觉等价”
-
-重点关注：
-- `baseRowLen`
-- `baseColLen`
-- `tileLength`
-- `is32BAligned` 相关分支
+1. **相对 include 清零**：目标目录 grep `#include "../` 应无匹配
+2. **命名空间归属**：所有 `using XXX::symbol` 的 symbol 真实定义必须在 XXX
+3. **本地闭包完整**：kernel 引用的所有非 SDK 符号能在目标目录或稳定 SDK 头解析
+4. **死引用清理**：无未使用 `using` / include
+5. **入口文件自包含**：若同时适配了入口，明确说明 `DTYPE_*` / `GET_TILING_DATA*` / `TILING_KEY_IS` / tiling struct 的来源
+6. **Host launch ABI 一致**：host 变量 / launch 调用 / kernel 入口三侧 ABI 一致（全用 `GM_ADDR`）
+7. **Tiling 公式逐分支等价**：对齐/非对齐分支仍独立；无"统一化"合并
 
 ---
 
 ## 常见坑
 
-### 1. 误把整份上游 `*_base.h` / `*_common.h` 原样复制
-这会把大量无关实现也拖进来，后续更难维护。默认只搬最小闭包。
-
-### 2. 不核实真实定义源
-很多符号是通过中间头间接暴露的（如 `using A::foo` 但 `foo` 实际定义在另一个命名空间）。迁移时必须追到真实定义位置。
-
-### 3. 只删 include，不补 helper
-这样会让当前目录暂时“看起来干净”，但实际符号解析断掉。
-
-### 4. 把纯 kernel 本地化和 host/工程集成混在一起
-用户如果只要 kernel 代码适配，就不要主动扩展到 host / graph / 注册。
-
-### 5. 忽略入口文件仍依赖原工程宏
-`*_apt.cpp` 很容易在 include 改完之后，看起来也“在当前目录里了”，但其实仍不能独立编译。必须显式说明。
-
-### 6. host 侧先用 `void*` 持有 device 指针，launch 时再强转成 `GM_ADDR`
-这在普通 C++ 里看起来像小问题，但在 AscendC direct-launch 场景里经常会 **直接编译失败**。
-
-正确做法是：
-- 如果 kernel 入口参数是 `GM_ADDR`
-- 那 host 侧申请 device 内存的变量也从一开始就用 `GM_ADDR`
-- `aclrtMalloc(reinterpret_cast<void**>(&devicePtr), ...)`
-- launch 直接传 `devicePtr`
-
-### 8. 不区分 host pass 和 device pass 就直接搬运 regbase kernel 头
-`-xasc` 编译器对同一个 `.cpp` 做两次编译（host pass 定义 `__NPU_HOST__`，device pass 定义 `__NPU_ARCH__`）。arch35 regbase kernel 使用的 `MicroAPI::RegTensor`、`MaskReg`、`CastTrait` 等类型 **仅 device pass 可用**。
-
-如果把 kernel 实现头原样搬到 standalone 工程，host pass 会报几十个 `no template named 'RegTensor'` 错误。
-
-修复方法：所有 regbase 实现头加 `#if !defined(__NPU_HOST__)` guard；`__global__` 入口用”body 内 guard”模式（见规则 18）。
-
-### 9. `__global__` 入口用模板函数 + `<<<>>>` 调用导致 bf16 参数类型 mangling 错误
-模板 `__global__` 函数在 `-xasc` host pass 处理 `<<<>>>` 语法时，当模板参数为 `bfloat16_t` 时，`GM_ADDR`（即 `__gm__ uint8_t*`）参数会被错误 mangle 为 `__bf16`。链接时报 `undefined symbol`，符号签名里出现 `__bf16` 而非 `unsigned char*`。
-
-修复方法：改用非模板 `__global__` 函数（见规则 19），避免模板参数干扰 host pass 类型推断。
-
-### 10. host 侧用自定义 struct（如 `SampleBFloat16`）作为 kernel 模板参数
-host 定义的 `SampleBFloat16{uint16_t bits}` 仅用于 host 侧数据生成和 golden 计算。如果直接用作 kernel 模板参数（`LaunchKernel<SampleBFloat16>` → 实例化 `DynamicQuantRegbaseFullLoad<SampleBFloat16, ...>`），会导致 `DataCopyPadExtParams<SampleBFloat16>` 等 SDK 类型实例化失败。
-
-正确做法：host 侧使用 `SampleBFloat16` 做计算，launch 时映射为 `bfloat16_t`；或直接用非模板入口函数硬编码 kernel 类型。
-
-### 7. 抽 tiling 时把”对齐分支”和”非对齐分支”机械合并
-看起来像是在“清理重复代码”，但这类改法最容易偷偷改掉原始切块语义。
-
-典型危险动作：
-- 把只有非 32B 对齐路径才该用的 `AlignUp(baseColLen, ubMinBlockLen)`
-- 也套到 32B 对齐路径上
-
-结果往往不是立即编译错，而是：
-- tiling 结果漂移
-- blockDim / base shape 改掉
-- correctness 或性能悄悄偏离上游实现
+1. **误把整份 `*_base.h` / `*_common.h` 原样复制**——拖一堆无关实现进来，只搬最小闭包
+2. **不核实真实定义源**——`using A::foo` 但 `foo` 实际定义在命名空间 `B`，迁移时必须追到真实定义位置
+3. **只删 include 不补 helper**——符号解析断掉
+4. **纯 kernel 依赖解耦和 host 集成混做**——先确认交付边界再推进
+5. **忽略入口文件仍依赖原工程宏**——include 改完 `*_apt.cpp` 看起来"在当前目录里了"，但仍不能独立编译。必须显式说明
+6. **host 先用 `void*` 再 `reinterpret_cast<GM_ADDR>`**——AscendC 编译器会直接拒绝这种转换
+7. **抽 tiling 时合并对齐/非对齐分支**——最危险的改动，不会立即编译错但会悄悄改变切块语义
+8. **不区分 host/device pass 直接搬 MicroAPI/Reg kernel 头**——host pass 报大量类型不存在错误，需加 `__NPU_HOST__` guard
+9. **模板 `__global__` 函数触发 bf16 mangling 错误**——改用显式命名非模板入口
+10. **host 自定义 struct 直接作 kernel 模板参数**——host 辅助类型（如 `SampleBFloat16`）只用于 host 侧数据生成和 golden，launch 时应映射为 `bfloat16_t`
 
 ---
 
-## 参考案例
+## 模式识别：快速诊断
 
-以下两个案例展示了两种典型的迁移模式。处理其他算子时，按同样的方法论识别本算子的依赖结构，套用对应的模式即可——不要局限于案例中的具体符号名和文件名。
+开始前先诊断算子的迁移工作量重心：
 
-### 案例 1：add_rms_norm arch35（重外部依赖型——核心工作在依赖闭包提取）
+| 诊断维度 | 重外部依赖型 | 轻外部依赖型 |
+|---------|-------------|-------------|
+| kernel 中 `..` include 数量 | 多（3+） | 少或无 |
+| 主要工作量 | 依赖闭包提取 | 入口改造 + tiling 提取 |
+| `local_deps.h` 内容 | 装外部搬运的函数/常量 | 仅集中 SDK include |
 
-当源目录是：
-- `add_rms_norm/arch35/add_rms_norm_regbase.h`
-- `add_rms_norm/arch35/add_rms_norm_regbase_common.h`
-- `add_rms_norm/arch35/add_rms_norm_regbase_split_d.h`
-
-典型处理方式是：
-- 保留这 3 个 kernel 头
-- 新增 `add_rms_norm_local_deps.h`
-- 删除相对 include：
-  - `../inc/platform.h`
-  - `../../rms_norm/rms_norm_base.h`
-  - `../../rms_norm/arch35/rms_norm_regbase_common.h`
-  - `../../norm_common/reduce_common_regbase.h`
-- 本地化最小依赖：
-  - `GetUbBlockSize` / `GetVRegSize`
-  - `BUFFER_NUM` / `DOUBLE_BUFFER_NUM` / `ONCE_VECTOR_SIZE` / `CeilDiv` / `is_same`
-  - `V_LENGTH` / `CeilAlign` / `ComputeMultiLevelRstd` / `castTraitB162B32` / `castTraitB322B16`
-  - `DataCopyImpl` / `ComputeSum` / `ComputeRstd` / `ComputeMultiLevelReduce`
-- 修正命名空间漂移：
-  - `castTraitB162B32` / `castTraitB322B16` 应归到 `NormCommon`
-- 如同时落地 `add_rms_norm_apt.cpp`，要额外声明：
-  - kernel 依赖已本地化
-  - 但 `DTYPE_X1` / `GET_TILING_DATA_WITH_STRUCT` 仍来自外部编译环境
-- 如果继续把入口做成可直接被其他 kernel/调用方 include 的版本，优先按下面方式改：
-  - 把 `*_apt.cpp` 改成 `*_apt.h`
-  - 按 tiling key 拆成两个独立入口函数，而不是单一 `add_rms_norm(...)` 分发
-  - 不再使用 `GET_TILING_DATA_WITH_STRUCT` / `TILING_KEY_IS`
-  - 两种 tiling struct 直接作为函数参数传入
-  - 如果用户只要求“增加模板参数”，默认只给入口函数增加 `DTYPE_X1 / DTYPE_X2 / DTYPE_GAMMA / DTYPE_Y / DTYPE_RSTD / DTYPE_X` 这类模板参数，**参数声明仍保持原来的 `GM_ADDR`**，不要擅自改成 `__gm__ T*` 形式
-  - 入口头 `*_apt.h` 默认不要写 `using namespace`；优先在入口实现里使用 `::AscendC::...`、`::AddRmsNorm::...` 这类显式限定，避免把命名空间污染扩散给包含方
-  - 头文件化后的 kernel 实现默认再用 `#if defined(__NPU_DEVICE__) ... #endif` 包起来，避免 host 侧包含入口头时直接编译 device 实现
-  - 但如果用户明确指出宏保护应该放在 `add_rms_norm_local_deps.h / add_rms_norm_regbase_common.h / add_rms_norm_regbase.h / add_rms_norm_regbase_split_d.h` 这类 **kernel 实现头**，就把 `__NPU_DEVICE__` 宏放在这些实现头里，而不是优先放在入口头 `*_apt.h`
-
----
-
-### 案例 2：swi_glu arch35（轻外部依赖型——核心工作在入口改造 + tiling 提取）
-
-这是一个 **kernel 已自包含（无 `..` include）+ 完整 tiling + host glue** 的案例。与 add_rms_norm 不同，swi_glu arch35 的 kernel 头本身没有外部相对 include，核心工作在入口改造和 tiling 提取。
-
-### 源文件集合
-
-kernel 源（arch35 目录）：
-- `glu_tiling.hpp` — `AlignUp`/`ISMAX` 工具函数 + 未使用的 struct
-- `glu_tiling_kernel.hpp` — `SwigluSingleTilingKernel` + 过程宏
-- `swi_glu_impl.hpp` — `SwigluVector`（fp32 计算路径）
-- `swi_glu_bf16.hpp` — `SwigluVectorBF16`（fp16/bf16 路径，float 中间精度）
-- `swi_glu_single.hpp` — `SwigluSingle`（tiling 编排 + 数据搬运）
-
-入口源（父目录）：
-- `swi_glu_apt.cpp` — 单一 `extern "C"` 入口 + `GET_TILING_DATA` + `TILING_KEY_IS`
-
-tiling 源（op_host 目录）：
-- `swi_glu_tiling.h` — `BEGIN_TILING_DATA_DEF(SwiGluTilingData)` + 14 个字段
-- `swi_glu_tiling.cpp` — `GluSingleTilingCalculator` 类 + `IMPL_OP_OPTILING` 注册
-
-### 适配后文件集合
-
-```
-swi_glu_story/
-  include/
-    kernel/
-      swi_glu_local_deps.h      ← 新增：kernel_operator.h + simt_api/asc_bf16.h
-      glu_tiling.hpp             ← 删除 GluTilingData/GluSingleTilingData/MAX_CORE_NUMBER
-      glu_tiling_kernel.hpp      ← include 改为 local_deps.h + swi_glu_tiling.h；stride u16→u32
-      swi_glu_impl.hpp           ← include 改为 local_deps.h
-      swi_glu_bf16.hpp           ← include 改为 local_deps.h
-      swi_glu_single.hpp         ← 加 (void)beta_gm; 消除未使用警告
-      swi_glu_apt.h              ← 新增：3 个独立入口 + KERNEL_TASK_TYPE_DEFAULT
-    tiling/
-      swi_glu_tiling.h           ← 新增：plain C++ struct，仅 6 字段
-      swi_glu_host_tiling.h      ← 新增：从 tiling.cpp 提取计算逻辑
-  src/
-    swi_glu_story.cpp             ← 新增：standalone host 驱动
-  CMakeLists.txt
-```
-
-### 关键改造点
-
-**1. TilingData 替换**
-```cpp
-// 原始（14 字段 + getter/setter）
-BEGIN_TILING_DATA_DEF(SwiGluTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, is32BAligned);
-    // ... 14 fields total
-END_TILING_DATA_DEF;
-
-// 适配后（仅 kernel 使用的 6 字段，直接转成普通 C++ struct）
-struct SwiGluTilingData {
-    uint32_t is32BAligned = 0;
-    uint32_t isDoubleBuffer = 0;
-    uint64_t rowLen = 0;
-    uint64_t colLen = 0;
-    uint32_t baseRowLen = 0;
-    uint32_t baseColLen = 0;
-};
-```
-
-**2. 入口改造（apt.cpp → apt.h）**
-```cpp
-// 原始：单入口 + 运行时类型分发
-extern "C" __global__ __aicore__ void swi_glu(GM_ADDR input, GM_ADDR output, GM_ADDR workspace, GM_ADDR tiling) {
-    GET_TILING_DATA(t, tiling);
-    if (TILING_KEY_IS(1)) { /* fp16 */ }
-    else if (TILING_KEY_IS(0)) { /* fp32 */ }
-}
-
-// 适配后：按 tilingKey（此处是 dtype）拆 3 个入口，tiling by value
-__global__ __aicore__ void swi_glu_fp16(GM_ADDR input, GM_ADDR output, GM_ADDR workspace, const SwiGluTilingData tilingData) {
-    (void)workspace;
-    if (tilingData.isDoubleBuffer == 1) { SwiGluRunBf16Impl<half, float, half, 2>(...); }
-    else { SwiGluRunBf16Impl<half, float, half, 1>(...); }
-}
-```
-
-**3. Host tiling 提取**
-- 去掉 `gert::TilingContext*`、`OP_LOGE`、`IMPL_OP_OPTILING`
-- 用 `platform_ascendc::PlatformAscendCManager::GetInstance()` 获取 UB/core 信息
-- 返回 `SwiGluLaunchConfig{blockDim, workspaceSize, dtype, tiling}`
-- tiling 计算逻辑（`CalcOptBaseShape` 等）逐行保真搬运，保持对齐/非对齐分支独立
-- 只保留 `SWIGLU_SINGLE` 路径，去掉 `SWIGLU_GRAD_SINGLE`
-
-**4. Host 驱动**
-- 内置确定性数据生成（线性递推 + 取模，不依赖 Python/numpy）
-- C++ golden：`silu(x) * y = x / (1 + exp(-x)) * y`
-- 测试 3 种 dtype（fp16, fp32, bf16），各有独立容差
-- `GM_ADDR` 贯穿 host/launch/kernel 三侧
-
-### 如何判断你的算子属于哪种模式
-
-| 判断维度 | 重外部依赖型（类似案例 1） | 轻外部依赖型（类似案例 2） |
-|------|-------------|---------|
-| kernel `..` include 数量 | 多（3+ 个） | 少或无 |
-| 核心工作量 | 依赖闭包提取 | 入口改造 + tiling 提取 |
-| local_deps.h 内容 | 装满搬运过来的外部函数/常量 | 仅集中 SDK include |
-| 入口拆分依据 | 按算子自身 tilingKey 的划分维度（计算模式、dtype 等） | 同左 |
-| tiling 提取 | 视需求 | 通常需要完整提取 |
-
-多数算子会混合两种模式的特征——先统计 `..` include 数量和 tilingKey 分发逻辑，就能判断主要工作量在哪。
-
----
-
-## Host 驱动代码模板
-
-执行适配时，**必须基于以下模板生成 host 驱动代码，不要去读目标仓库（如 cann-samples）里的其他 story cpp 文件**。模板是算子无关的，适配时只需替换算子特定部分（标注为 `/* OPERATOR-SPECIFIC */` 的位置）。
-
-### 完整 host 驱动模板
-
-```cpp
-#include "acl/acl.h"
-#include "acl/acl_rt.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <cstring>
-#include <iostream>
-#include <memory>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <type_traits>
-#include <vector>
-
-#include "kernel_operator.h"
-/* OPERATOR-SPECIFIC: include kernel 入口头和 host tiling 头 */
-// #include "xxx_apt.h"
-// #include "xxx_host_tiling.h"
-
-#define CHECK_RET(cond, return_expr) \
-    do { \
-        if (!(cond)) { \
-            return_expr; \
-        } \
-    } while (0)
-
-#define LOG_PRINT(message, ...) \
-    do { \
-        printf(message, ##__VA_ARGS__); \
-    } while (0)
-
-namespace {
-
-/* OPERATOR-SPECIFIC: 问题规模常量 */
-// constexpr size_t kRowLen = 128;
-// constexpr size_t kColLen = 256;
-
-constexpr int kMaxErrorElemNum = 10;
-constexpr float kFloatTolerance = 1e-4f;
-constexpr float kHalfTolerance = 5e-2f;
-constexpr float kBFloat16Tolerance = 5e-2f;
-
-// ---- BFloat16 host 侧辅助（AscendC bfloat16_t 仅 device 可用）----
-using SampleHalf = half;
-struct SampleBFloat16 {
-    uint16_t bits;
-};
-
-uint16_t FloatToBf16Bits(float value)
-{
-    uint32_t bits = 0;
-    std::memcpy(&bits, &value, sizeof(bits));
-    const uint32_t lsb = (bits >> 16) & 1U;
-    const uint32_t roundingBias = 0x7FFFU + lsb;
-    return static_cast<uint16_t>((bits + roundingBias) >> 16);
-}
-
-float Bf16BitsToFloat(uint16_t bits)
-{
-    const uint32_t value = static_cast<uint32_t>(bits) << 16;
-    float result = 0.0f;
-    std::memcpy(&result, &value, sizeof(result));
-    return result;
-}
-
-// ---- 类型转换 trait ----
-template <typename T>
-T FromFloat(float value) { return static_cast<T>(value); }
-
-template <>
-SampleBFloat16 FromFloat<SampleBFloat16>(float value) { return SampleBFloat16{FloatToBf16Bits(value)}; }
-
-template <typename T>
-float ToFloat(T value) { return static_cast<float>(value); }
-
-template <>
-float ToFloat<SampleBFloat16>(SampleBFloat16 value) { return Bf16BitsToFloat(value.bits); }
-
-template <typename T> float GetTolerance();
-template <> float GetTolerance<float>()           { return kFloatTolerance; }
-template <> float GetTolerance<SampleHalf>()      { return kHalfTolerance; }
-template <> float GetTolerance<SampleBFloat16>()  { return kBFloat16Tolerance; }
-
-template <typename T> const char *GetDtypeName();
-template <> const char *GetDtypeName<float>()           { return "float32"; }
-template <> const char *GetDtypeName<SampleHalf>()      { return "float16"; }
-template <> const char *GetDtypeName<SampleBFloat16>()  { return "bfloat16"; }
-
-// ---- ACL 基础 ----
-void CheckAcl(aclError ret, const char *msg)
-{
-    if (ret != ACL_SUCCESS) {
-        std::ostringstream oss;
-        oss << msg << " failed. aclError=" << ret;
-        throw std::runtime_error(oss.str());
-    }
-}
-
-int Init(int32_t deviceId, aclrtStream *stream)
-{
-    auto ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtCreateStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
-    return ACL_SUCCESS;
-}
-
-void Finalize(int32_t deviceId, aclrtStream stream)
-{
-    if (stream != nullptr) {
-        aclrtDestroyStream(stream);
-    }
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-}
-
-// ---- 结果比对 ----
-template <typename T>
-size_t CompareBuffer(const std::string &name, const std::vector<T> &actual,
-    const std::vector<T> &expected, float atol)
-{
-    if (actual.size() != expected.size()) {
-        throw std::runtime_error(name + " size mismatch");
-    }
-    size_t mismatchCount = 0;
-    float maxAbsErr = 0.0f;
-    for (size_t i = 0; i < actual.size(); ++i) {
-        const float act = ToFloat(actual[i]);
-        const float exp = ToFloat(expected[i]);
-        const float err = std::fabs(act - exp);
-        maxAbsErr = std::max(maxAbsErr, err);
-        if (err > atol) {
-            if (mismatchCount < static_cast<size_t>(kMaxErrorElemNum)) {
-                std::cout << name << " mismatch[" << i << "]: expected=" << exp
-                          << ", actual=" << act << ", abs_err=" << err << std::endl;
-            }
-            ++mismatchCount;
-        }
-    }
-    std::cout << name << ": total=" << actual.size() << ", mismatch=" << mismatchCount
-              << ", max_abs_err=" << maxAbsErr << std::endl;
-    return mismatchCount;
-}
-
-/* OPERATOR-SPECIFIC: 数据生成 —— 确定性，不依赖 Python/numpy */
-// template <typename T>
-// void BuildInput(std::vector<T> &data, size_t rowLen, size_t colLen) { ... }
-
-/* OPERATOR-SPECIFIC: Golden 计算 —— 用 float 精度算完再转回目标类型 */
-// template <typename T>
-// void ComputeReference(const std::vector<T> &input, std::vector<T> &output) { ... }
-
-/* OPERATOR-SPECIFIC: Kernel launch 分发 —— 按 tilingKey 选择入口 */
-// template <typename T>
-// void LaunchKernel(GM_ADDR inputDevice, GM_ADDR outputDevice, GM_ADDR workspaceDevice,
-//     const XxxLaunchConfig &launchConfig, aclrtStream stream)
-// {
-//     if constexpr (std::is_same_v<T, float>) {
-//         xxx_fp32<<<launchConfig.blockDim, 0, stream>>>(inputDevice, outputDevice, workspaceDevice, launchConfig.tiling);
-//     } else if constexpr (std::is_same_v<T, SampleHalf>) {
-//         xxx_fp16<<<launchConfig.blockDim, 0, stream>>>(inputDevice, outputDevice, workspaceDevice, launchConfig.tiling);
-//     } else { ... }
-// }
-
-/* OPERATOR-SPECIFIC: 单次测试流程 */
-template <typename T>
-void RunOneCase(aclrtStream stream)
-{
-    /* 1. 计算 size */
-    // const size_t inputSize = ...;
-    // const size_t outputSize = ...;
-
-    /* 2. 生成输入 + golden */
-    // std::vector<T> inputData;
-    // BuildInput(inputData, ...);
-    // std::vector<T> outputGolden;
-    // ComputeReference(inputData, outputGolden);
-    // std::vector<T> outputActual(outputElemNum, FromFloat<T>(0.0f));
-
-    /* 3. 计算 tiling + launch config */
-    // auto launchConfig = XxxHost::CalcLaunchConfig(...);
-
-    /* 4. 设备内存分配 —— GM_ADDR 贯穿 */
-    GM_ADDR inputDevice = nullptr;
-    GM_ADDR outputDevice = nullptr;
-    GM_ADDR workspaceDevice = nullptr;
-
-    // CheckAcl(aclrtMalloc((void **)&inputDevice, inputSize, ACL_MEM_MALLOC_HUGE_FIRST), "aclrtMalloc input");
-    // CheckAcl(aclrtMalloc((void **)&outputDevice, outputSize, ACL_MEM_MALLOC_HUGE_FIRST), "aclrtMalloc output");
-    // CheckAcl(aclrtMalloc((void **)&workspaceDevice, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST), "aclrtMalloc workspace");
-
-    try {
-        /* 5. H2D 拷贝 */
-        // CheckAcl(aclrtMemcpy(inputDevice, inputSize, inputData.data(), inputSize, ACL_MEMCPY_HOST_TO_DEVICE), "H2D input");
-
-        /* 6. Launch + Sync */
-        // LaunchKernel<T>(inputDevice, outputDevice, workspaceDevice, launchConfig, stream);
-        // CheckAcl(aclrtSynchronizeStream(stream), "sync");
-
-        /* 7. D2H 拷贝 + 验证 */
-        // CheckAcl(aclrtMemcpy(outputActual.data(), outputSize, outputDevice, outputSize, ACL_MEMCPY_DEVICE_TO_HOST), "D2H output");
-        // size_t mismatch = CompareBuffer(GetDtypeName<T>(), outputActual, outputGolden, GetTolerance<T>());
-        // if (mismatch != 0) { throw std::runtime_error("result check failed"); }
-        // std::cout << GetDtypeName<T>() << " run succeeded" << std::endl;
-    } catch (...) {
-        if (workspaceDevice != nullptr) { aclrtFree(workspaceDevice); }
-        if (outputDevice != nullptr) { aclrtFree(outputDevice); }
-        if (inputDevice != nullptr) { aclrtFree(inputDevice); }
-        throw;
-    }
-
-    CheckAcl(aclrtFree(workspaceDevice), "free workspace");
-    CheckAcl(aclrtFree(outputDevice), "free output");
-    CheckAcl(aclrtFree(inputDevice), "free input");
-}
-
-void RunSample(aclrtStream stream)
-{
-    /* OPERATOR-SPECIFIC: 按需测试各种 dtype */
-    RunOneCase<SampleHalf>(stream);
-    RunOneCase<float>(stream);
-    RunOneCase<SampleBFloat16>(stream);
-}
-} // namespace
-
-int main()
-{
-    int32_t deviceId = 0;
-    aclrtStream stream = nullptr;
-    auto ret = Init(deviceId, &stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-
-    try {
-        RunSample(stream);
-    } catch (const std::exception &ex) {
-        std::cerr << ex.what() << std::endl;
-        ret = 1;
-    }
-
-    Finalize(deviceId, stream);
-    return ret;
-}
-```
-
-### 模板使用说明
-
-适配时只需要替换 `/* OPERATOR-SPECIFIC */` 标注的部分：
-
-| 替换点 | 说明 |
-|--------|------|
-| include 头 | 替换为实际的 `xxx_apt.h` 和 `xxx_host_tiling.h` |
-| 问题规模常量 | 根据算子设定合理的测试 shape |
-| `BuildInput` | 确定性数据生成（线性递推 + 取模），不依赖 Python |
-| `ComputeReference` | 用 float 精度计算 golden，再转回目标类型 |
-| `LaunchKernel` | 按 tilingKey 分发到各入口函数 |
-| `RunOneCase` | 填入实际的 size 计算、tiling 调用、内存拷贝 |
-
-以下部分 **不需要修改**，直接复用：
-- ACL init/finalize
-- BFloat16 host 辅助（`FloatToBf16Bits`/`Bf16BitsToFloat`/`SampleBFloat16`）
-- 类型转换 trait（`FromFloat`/`ToFloat`/`GetTolerance`/`GetDtypeName`）
-- `CheckAcl` 错误检查
-- `CompareBuffer` 结果比对
-- `main` 函数骨架
-
-### CMakeLists.txt 模板
-
-CMakeLists.txt 可以参考目标仓库的 cmake 体系
+多数算子混合两种特征。统计 `..` include 数量 + 看 tilingKey 分发逻辑，就能判断主要工作量在哪。但不管属于哪一类，三条核心原则都适用。
 
 ---
 
 ## 工具偏好
 
-优先使用：
-- `Glob`：找文件
-- `Grep`：找 include 和符号引用
-- `Read`：读源文件和定义文件
-- `Edit`：改现有文件
-- `Write`：只用于新增 helper 头或新增目标副本
+- `Glob` 找文件
+- `Grep` 找 include 和符号引用
+- `Read` 读源文件和定义文件
+- `Edit` 改现有文件
+- `Write` 只用于新增 `local_deps.h` / `entry.h` / `tilingdata.h` 或新增目标副本
 
-不要用 shell 的 `grep/cat/find` 代替这些专用工具，除非确实没有替代方案。
+不要用 shell `grep/cat/find` 代替这些专用工具。
 
 ---
 
-## 一句话原则
+## Host 驱动来源决策
 
-这类任务的核心不是”把文件复制过来”，而是：
+如果交付边界要求写 standalone host 驱动（independent `main` + golden 校验），按以下优先级决定样板来源：
 
-**把 kernel 代码适配成一个最小依赖闭包明确、语义不变、目标目录内可维护的本地版本。**
+1. **目标仓库有可参考的同类 story / sample**（有现成的 ACL init、main 骨架、golden 比对模式）
+   → **优先对齐目标仓邻居**。读 1–2 个邻居 story 的 main.cpp 归纳模式，本算子跟那个体系走。不要引入"目标仓里没人这么写"的样板。
 
-**执行本 skill 时，只读原始算子源码（kernel + tiling），不读目标仓库中的其他 sample / story / utils。所有 host 样板代码从本 skill 内嵌模板生成。**
+2. **目标仓里没有 standalone host 驱动惯例**（新建的独立 story，没有参考对象）
+   → 读 `references/host-driver-template.md`，里面有 ACL init / BFloat16 辅助 / 类型转换 trait / 结果比对 / `main` 骨架，算子无关，替换 `/* OPERATOR-SPECIFIC */` 标注部分即可上手。
+
+3. **任务不需要 host 驱动**（只做 kernel 依赖解耦、或集成到 PyTorch extension / aclnn wrapper / CI 框架）
+   → 不要碰这部分，也不要读 template。
+
+无论哪种来源，都要贯彻一条硬约束：**`GM_ADDR` 贯穿 host / launch / kernel 三侧**，不要用 `void*` 中转再 `reinterpret_cast<GM_ADDR>`（AscendC 编译器会直接拒绝这种转换）。
+
+CMakeLists.txt 属于"工程约定"，按目标仓邻居的 cmake 体系对齐（见上文"信息来源约束"）。
+
+---
+
+## 一句话原则（再次强调）
+
+**kernel 代码零修改。tiling 数学零修改。只改注册框架胶水。默认全量迁移，不做选择性裁剪。**
+
+**算法源只来自原算子源码；工程约定（目录/命名/CMake）向目标仓邻居 story 对齐；host 驱动样板优先对齐目标仓，目标仓无参考时读 `references/host-driver-template.md`。**

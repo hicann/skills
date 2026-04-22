@@ -1,297 +1,300 @@
 # 自定义算子转 `<<<>>>` kernel 直调检查清单
 
-这个清单用于 **AscendC 自定义算子转 `<<<>>>` kernel 直调改造**。
+这个清单用于 **AscendC 自定义算子转 `<<<>>>` kernel 直调改造** 的静态核验。
 
 适用场景：
-- 把 `op_kernel/archXX` 或现有算子源树迁到当前目录
-- 删除 `..` 相对 include
-- 提取最小依赖闭包
-- 判断当前结果是否只是“kernel 本地化完成”，还是已经“可直接 launch / 独立编译”
+- 把现有算子源树（kernel + tiling）迁到目标目录
+- 删除相对 include，提取最小依赖闭包
+- 判断当前结果是否只是"kernel 依赖解耦完成"，还是已经"可直接 launch / 独立编译"
+
+**使用本清单前，先确认核心原则**：
+1. kernel 实现代码零修改（只允许 include 替换、命名空间包装、TilingData 类型来源替换）
+2. tiling 计算逻辑零修改（只允许平台接口替换、框架胶水删除、输入参数形态调整）
+3. 只改"注册框架胶水"（入口、TilingData 宏定义、host tiling 接口）
+4. 默认全量迁移，不做选择性裁剪——只有用户明确授权才裁剪指定字段/路径/variant
+
+如果清单的某一项检查和这些原则冲突，以原则为准。
 
 ---
 
-## 1. 任务边界先确认
+## 1. 任务边界确认
 
-开始前先确认：
 - [ ] 这是 **自定义算子转 `<<<>>>` kernel 直调改造**，不是 host / graph / 注册集成
-- [ ] 目标目录已明确（当前目录根 / 子目录 / 保留源层级）
-- [ ] 是否需要同时处理 `*_apt.cpp` / `*_apt.h`
-- [ ] 是否要求“可独立编译 / 可直接 launch”，还是只要求“kernel 本地化”
+- [ ] 目标目录已明确（由用户指定，不预设布局）
+- [ ] 是否需要同时处理入口文件（命名可能是 `*_apt.cpp` / `*_invocation.cpp` / 其他）
+- [ ] 是否要求"可独立编译 / 可直接 launch"，还是只要求"kernel 依赖解耦"
 
-如果用户要的是 standalone story / cann-samples / `<<<>>>` 直调工程，就继续按本清单推进，不要误退回成纯 kernel 适配。
+### 1.1 目标仓约定调研
+
+开工前在目标仓库里 `Glob` + `Read` 2–3 个同类 story / sample（只看组织结构，不看算法），归纳：
+- [ ] 目录布局（include/src/cmake 分层、kernel/tiling/host 放哪里）
+- [ ] 文件命名约定（`.h` / `.hpp` 后缀、`_kernel` / `_entry` / `_tilingdata` 等后缀规则）
+- [ ] CMakeLists.txt 骨架（target_include_directories 写法、编译选项组织）
+- [ ] include 路径风格（相对路径 vs 逻辑路径）
+- [ ] 顶层命名空间选择
+- [ ] 测试 / README 目录的组织方式
+
+本算子的目录结构和文件命名 **跟这些邻居约定对齐**，不要发明新规矩。如果同类 story 之间就不一致，选影响面最大或最新维护的那个参考。
 
 ---
 
 ## 2. 源文件盘点
 
-先列出：
-- [ ] `archXX/` 下全部 `.h` / `.cpp`
-- [ ] 哪个文件是入口（如 `*_apt.cpp`）
-- [ ] 哪个文件是真正的依赖汇聚点（常见是 `*_common.h` / `*_regbase_common.h`）
-- [ ] 哪些文件已经是从上游模板改造过的“半本地化版本”
-
-判断点：
-- [ ] 当前 kernel 是 header-only / inline 风格
-- [ ] 依赖实现主要藏在 common / base 头，而不在 `.cpp`
+列出：
+- [ ] kernel 源目录下全部 `.h` / `.cpp`
+- [ ] 入口文件（通常在父目录或 kernel 目录根）
+- [ ] 依赖汇聚点（通常是 `*_common.h` 等）
+- [ ] tiling 源（通常在 `op_host/` 或类似位置）
+- [ ] 已被"从上游模板改造过的半本地化版本"文件（优先复用，不重建）
 
 ---
 
 ## 3. 相对 include 盘点
 
-必须完整列出所有：
-- [ ] `#include "../..."`
-- [ ] `#include "../../..."`
-
-对每条 include，至少确认：
+列出所有 `#include "../..."` / `#include "../../..."`。对每条至少确认：
 - [ ] 被哪些目标文件引用
 - [ ] 当前目标文件真正用了哪些符号
-- [ ] 这些符号的真实定义位置
-- [ ] 是否存在“表面来自 A，实际定义在 B”的中转依赖
+- [ ] 这些符号的**真实**定义位置
+- [ ] 是否存在"表面来自 A，实际定义在 B"的中转依赖
 
-不要接受“include 了就整包搬”。
+不要接受"include 了就整包搬"。
 
 ---
 
-## 4. 符号分类
+## 4. 原则 1 验证：kernel 实现代码零修改
 
-把要搬的外部符号分成四类。
+对目标目录下所有 kernel 实现文件（包括从上游复制 / 保留的实现头），逐文件对比原文件：
 
-### 4.1 平台常量
-来自 `platform` 命名空间的常量/函数（如 `GetUbBlockSize`、`GetVRegSize` 等）。
+- [ ] 除了 include 指令、命名空间包装、TilingData 类型来源以外，没有其他改动
+- [ ] 没有合并或拆开成员函数
+- [ ] 没有重命名字段、参数、局部变量
+- [ ] 没有"顺手"优化循环、计算顺序、分支写法
+- [ ] 没有把类成员改成自由函数（或反过来）
+- [ ] 没有删除看起来"没用"的成员或方法
 
-判断：
+**判断标准**：若从原工程同步新版本 kernel，能否直接覆盖 kernel 实现文件而不影响其他地方？能就通过。
+
+---
+
+## 5. 原则 2 验证：tiling 计算逻辑零修改
+
+对比目标 host tiling 逻辑和原 `op_tiling` 代码：
+
+- [ ] 对齐 / 非对齐分支独立保留（没有合并成"统一"公式）
+- [ ] 分子 / 分母 / 上下取整按原样（如原本是 `AlignUp(baseColLen, ubMinBlockLen)` 就保持，原本不是就不要加）
+- [ ] 边界判断、clamp、溢出检查保留
+- [ ] 乘除法计算顺序保留
+- [ ] 只做了接口替换（`gert::TilingContext*` → `PlatformAscendCManager`）、框架胶水删除、输入参数形态调整——没有数学改动
+
+重点关注的典型公式（按算子而定）：
+- [ ] `baseRowLen` / `baseColLen` / `tileLength` 等切块参数
+- [ ] `is32BAligned` 等关键分支分叉
+- [ ] `blockDim` 推导
+
+---
+
+## 6. 符号分类与最小闭包
+
+把要搬的外部符号分成四类，逐类核验：
+
+### 6.1 平台常量
 - [ ] 能否直接改成本地 `constexpr`
 - [ ] 是否保留最小 `platform` namespace 子集更清晰
 
-### 4.2 基础常量 / traits
-来自 `*_base.h` 或公共头的基础定义（如 buffer 数量常量、对齐/取整工具函数、类型 traits 等）。
+### 6.2 基础常量 / traits
+- [ ] 是否只搬需要的一小段
+- [ ] 是否误把整份 `*_base.h` 复制
 
-判断：
-- [ ] 是否只需一小段基础定义
-- [ ] 是否错误地打算整包复制 `*_base.h`
-
-### 4.3 common 层工具
-来自公共 common/reduce 层头文件的工具函数（如对齐函数、cast 辅助、多级规约函数等）。
-
-判断：
-- [ ] 命名空间归属是否真实（最易出现"表面归属≠真实定义"的类别）
+### 6.3 common 层工具
+- [ ] 命名空间归属是否真实（最易出现"表面归属 ≠ 真实定义"）
 - [ ] 迁移后 `using` 是否需要修正
 
-### 4.4 算法 helper / regbase helper
-当前算子特有的计算辅助函数（如数据搬运 helper、规约函数、数学工具等）。
-
-判断：
+### 6.4 算法 helper
 - [ ] 是否只搬当前 kernel 真正使用的函数
 - [ ] 是否已补齐它们的直接闭包
-- [ ] 是否误把整份上游 `*_common.h` / `*_regbase_common.h` 拖了进来
+- [ ] 是否误把整份上游 `*_common.h` / `*_regbase_common.h` 拖进来
 
 ---
 
-## 5. 收口结构决策
+## 7. 收口结构
 
-默认优先使用：
-- [ ] 保留原 kernel 文件主体
-- [ ] 新增一个 local helper 头，如 `xxx_local_deps.h`
+默认推荐：
+- [ ] 保留原 kernel 实现文件主体不动
+- [ ] 新增 `<op>_local_deps.h`，装 SDK include + 外部依赖闭包
+- [ ] `local_deps.h` 只装外部依赖，不混入当前 kernel 主逻辑
+- [ ] 文件职责清晰：kernel 实现 / 依赖闭包 / 入口 / tiling / host driver 分离
 
-检查：
-- [ ] helper 头只装外部依赖，不混入当前 kernel 主逻辑
-- [ ] 原有 `*_common.h` 仍承担当前算子的本地逻辑
-- [ ] 文件职责清晰：主逻辑 / 依赖闭包 / 入口分离
-
-仅在依赖极少时，才考虑把外部内容直接塞回原头。
+仅在依赖极少时考虑把外部内容直接塞回原头。
 
 ---
 
-## 6. 命名空间与死引用检查
+## 8. 命名空间与死引用
 
-重点检查：
-- [ ] `using` 的符号归属是否真实
-- [ ] 是否还保留错误中转归属（例如表面从 `RmsNorm` 引，真实在 `NormCommon`）
-- [ ] 是否存在未使用 `using`
-- [ ] 是否存在未使用 include
-- [ ] 是否存在只为历史遗留保留的空壳依赖
+- [ ] `using` 的符号归属真实
+- [ ] 无错误中转归属（例如表面从 `A` 引，真实在 `B`）
+- [ ] 无未使用 `using`
+- [ ] 无未使用 include
+- [ ] 无只为历史遗留保留的空壳依赖
 
-典型死引用模式：
-- [ ] `using XXX::SomeHelper` 只声明不使用
+典型死引用模式：`using XXX::SomeHelper` 只声明不使用。
 
 ---
 
-## 7. 入口文件检查（如果同时处理 `*_apt.cpp` / `*_apt.h`）
+## 9. 入口文件检查
 
-必须单独检查：
-- [ ] 入口文件最终是保留 `.cpp`，还是改成可被其他代码直接 include 的 `.h`
-- [ ] `DTYPE_X1` 是否来自外部环境
-- [ ] `GET_TILING_DATA_WITH_STRUCT` 是否来自外部环境
-- [ ] `TILING_KEY_IS` 是否来自外部环境
-- [ ] tiling struct 是否在当前目录闭环可见
-- [ ] 是否需要把单入口按 tiling key 拆成两个独立函数
-- [ ] 如果用户要求“加模板参数”，是否只是增加模板形参，而**参数声明仍保持 `GM_ADDR`**
-- [ ] 入口头 `*_apt.h` 是否避免了 `using namespace`，并改为 `::AscendC::` / `::AddRmsNorm::` 这类显式限定
-- [ ] 头文件化后的 kernel 实现是否已用 `#if defined(__NPU_DEVICE__) ... #endif` 包住
-- [ ] `__NPU_DEVICE__` 宏保护应放在入口头，还是放在 `local_deps.h / regbase_common.h / regbase.h / regbase_split_d.h` 这类 kernel 实现头
+如果同时处理了入口文件：
 
-结论必须二选一写清楚：
-- [ ] **kernel 已本地化，但入口仍依赖外部编译环境**
+- [ ] 入口最终放在独立头文件（如 `<op>_entry.h` / `<op>_apt.h`），不和 kernel 实现头混在一起
+- [ ] 去掉了 `extern "C"`
+- [ ] 去掉了 `GET_TILING_DATA` / `GET_TILING_DATA_WITH_STRUCT`
+- [ ] 去掉了 `TILING_KEY_IS` 运行时分发
+- [ ] 按 tilingKey 的实际划分维度拆成独立入口函数（按 dtype、计算模式或其他维度，因算子而异）
+- [ ] `GM_ADDR tiling` 改成 `const XxxTilingData tilingData`（by value）
+- [ ] 如果原始代码有 `KERNEL_TASK_TYPE_DEFAULT` 则保留；没有不要主动添加
+- [ ] workspace 参数如果保留，是否加 `(void)workspace;` 抑制未使用警告
+- [ ] 入口头避免 `using namespace`，改用 `::AscendC::...` 这类显式限定
+- [ ] 入口函数只做 3 件事：构造 `TPipe` → 构造 kernel 类对象 → `Init` + `Process`
+
+关于外部宏依赖，结论必须明确二选一：
+- [ ] **kernel 已本地化，但入口仍依赖外部编译环境（`DTYPE_*` 等）**
 - [ ] **入口也已本地化，可独立编译**
 
-不要混着说。
-
 ---
 
-## 8. 静态验证
+## 10. 静态 include 清理
 
-### 8.1 include 清理
-在目标文件集合中搜索：
+在目标文件集合中 grep：
 - [ ] `#include "../`
 - [ ] `#include "../../`
 
 目标：无匹配。
 
-### 8.2 错误命名空间引用
-搜索所有 `using XXX::symbol` 语句，逐条核实符号的真实定义位置是否和 `using` 声明的命名空间一致。
+---
 
-典型问题模式：`using A::foo` 但 `foo` 的真实定义在命名空间 `B` 中。
+## 11. TilingData struct 替换
 
-若发现归属不一致，必须修正。
-
-### 8.3 本地闭包完整性
-确认 kernel 代码中引用的所有非 SDK 符号（函数、常量、traits、类型别名）均能在目标目录本地解析，或来自稳定 SDK 头。
-
-方法：在目标目录中 grep kernel 头文件引用的每个非 SDK 函数/常量，确认都能在本地解析。重点检查：
-- [ ] 工具函数（取整、对齐等）
-- [ ] 平台常量
-- [ ] 类型 traits / cast 辅助
-- [ ] 算法 helper / 规约函数
-
-### 8.4 helper 头职责
-- [ ] helper 头里只有外部依赖闭包
-- [ ] 当前算子特有逻辑仍保留在原 kernel 文件中
+如果把 `BEGIN_TILING_DATA_DEF` 替换成 plain struct：
+- [ ] 机械转换为普通 C++ struct（不需要 `#pragma pack`）
+- [ ] **默认保留所有字段**（"全量迁移优先"原则）；如果裁剪了字段，必须对应用户明确授权
+- [ ] 字段名、字段类型、字段顺序与原 `TILING_DATA_FIELD_DEF` 一致
+- [ ] 放在独立 `<op>_tilingdata.h`，仅依赖 `<cstdint>`，kernel 和 host 共用
 
 ---
 
-## 9. 结果汇报模板
+## 12. Host tiling 提取
+
+如果提取了 host tiling 逻辑：
+
+### 12.1 接口替换（功能等价）
+- [ ] `gert::TilingContext*` 已替换为 `PlatformAscendCManager::GetInstance()`
+- [ ] `OP_LOGE` / `OP_LOGI` 替换为 `throw` 或 `printf`
+- [ ] `ge::DataType` 替换为自定义 enum
+- [ ] `IMPL_OP_OPTILING` / `REGISTER_TILING_DATA_CLASS` 已删除
+
+### 12.2 数学逻辑保真（原则 2 的具体检查）
+- [ ] 对齐/非对齐分支独立保留
+- [ ] 关键公式逐条和上游比对过，而不是"凭感觉等价"
+- [ ] **默认保留所有 variant 路径**（"全量迁移优先"原则）；如有裁剪（如只要 fullload），必须对应用户明确授权
+- [ ] 所有保留的路径内部逻辑一行不动
+- [ ] 返回值包含 `blockDim` + `tiling` struct
+
+---
+
+## 13. Host 驱动检查
+
+如果创建了 standalone host 驱动，先确认样板来源：
+- [ ] 目标仓有同类 story / sample 参考 → 对齐邻居写法
+- [ ] 目标仓无参考 → 基于 `references/host-driver-template.md`
+
+通用检查项：
+- [ ] 数据生成自包含（C++ 确定性生成，不依赖 Python）
+- [ ] golden 计算用 float 精度完成
+- [ ] 测试了所有目标 dtype
+- [ ] `GM_ADDR` 贯穿 host / launch / kernel 三侧
+- [ ] `aclrtMalloc` 按 `reinterpret_cast<void**>(&devicePtr)` 形式使用
+- [ ] kernel launch 形如 `xxx<<<blockDim, 0, stream>>>(inputDevice, ..., tilingData)`
+
+---
+
+## 14. Host launch ABI 一致性
+
+如果 kernel 入口参数是 `GM_ADDR`：
+- [ ] host 侧 device buffer 变量声明为 `GM_ADDR`
+- [ ] `aclrtMalloc` 按 `reinterpret_cast<void**>(&devicePtr)` 形式写入这个 `GM_ADDR` 变量
+- [ ] kernel launch 时直接传 `devicePtr`
+- [ ] 不存在 `reinterpret_cast<GM_ADDR>(voidPtr)` 这种调用点强转
+
+---
+
+## 15. `-xasc` 双 pass 编译兼容（有条件）
+
+触发条件：`Grep` kernel 实现头中是否出现 `MicroAPI::` / `Reg::` / `__VEC_SCOPE__` / `RegTensor` / `MaskReg`。无则跳过。
+
+- [ ] 所有使用 MicroAPI/Reg 的实现头已加 `#if !defined(__NPU_HOST__)` 保护
+- [ ] `local_deps.h` / `tilingdata.h` 等纯类型定义头**未**加 guard（host/device 都需要可见）
+- [ ] `__global__` 入口函数使用"body 内 guard"模式（函数签名在 guard 外，实现在 `#if !defined(__NPU_HOST__)` 内）
+- [ ] 遇到 bf16 mangling 问题时，`__global__` 入口改成显式命名的非模板函数
+- [ ] host 侧数据类型（如 `SampleBFloat16`）与 kernel 模板参数（如 `bfloat16_t`）严格分离
+
+---
+
+## 16. 自包含性
+
+**运行时 / 编译依赖层面**：
+- [ ] 适配结果只依赖 CANN SDK + ACL 运行时 + 标准 C++ 库
+- [ ] 不依赖目标仓库中其他 sample 的代码文件（没有 include 或链接其他 sample 的 `.h` / `.cpp` / 库）
+- [ ] 目标目录内所有需要的代码都闭环
+
+**算法逻辑层面**：
+- [ ] kernel 计算 / tiling 数学 / 数据搬运逻辑都来自原算子源码，没有从其他 sample 复制算法代码
+- [ ] host 驱动的算法无关骨架（ACL init、malloc、类型转换、结果比对）来源清晰：目标仓有邻居 → 对齐邻居；无邻居 → 基于 `references/host-driver-template.md`
+
+**工程约定层面（目标：对齐邻居而非独立）**：
+- [ ] 目录布局、文件命名、CMake 写法与目标仓邻居同类 story 对齐
+- [ ] include 路径风格、顶层命名空间选择跟随目标仓惯例
+
+注意："运行时不依赖其他 sample" 和 "工程约定向其他 sample 对齐" 是两件不冲突的事——前者禁止代码级依赖，后者鼓励风格一致。
+
+---
+
+## 17. 输入校验（可选）
+
+如果做了输入校验：
+- [ ] 拆成独立 `check_inputs()`，不混进 Meta / shape inference
+- [ ] 只做静态可推导的校验（attr / rank / dtype / 直接可推导的跨张量关系）
+- [ ] 不做依赖张量数值才能判定的校验（避免 D2H 同步）
+
+---
+
+## 18. 结果汇报模板
 
 完成后至少输出：
 
-### 9.1 目标文件集合
-- 落地了哪些 `.h` / `.cpp`
+### 18.1 目标文件集合
+落地了哪些 `.h` / `.cpp`
 
-### 9.2 删除的相对 include
-- 精确到文件和 include 语句
+### 18.2 删除的相对 include
+精确到文件和 include 语句
 
-### 9.3 本地化依赖清单
-- 按原来源头文件分组列出搬运符号
+### 18.3 本地化依赖清单
+按原来源头文件分组列出搬运符号
 
-### 9.4 helper 头职责
-- 为什么新增 helper
-- helper 里收了哪些依赖
+### 18.4 `local_deps.h` 职责
+装了哪类依赖
 
-### 9.5 剩余外部假设
-- 哪些宏 / tiling / dtype 仍依赖外部环境
+### 18.5 剩余外部假设
+哪些宏 / tiling / dtype 仍依赖外部环境
 
-### 9.6 静态验证结论
-- 是否已没有 `..` include
-- 是否还存在错误命名空间 `using`
+### 18.6 静态验证结论
+`..` include / 错误命名空间 `using` / 本地闭包是否通过
 
----
-
-## 10. 重外部依赖型算子参考判断（以 add_rms_norm arch35 为例）
-
-当算子有多个 `..` 相对 include（类似 add_rms_norm 依赖 rms_norm、norm_common 等上游模块），通常应满足：
-- [ ] 保留算子自身的 kernel 实现头（如 `*_regbase.h`、`*_regbase_common.h`、`*_split_d.h` 等）
-- [ ] 新增 `xxx_local_deps.h`，集中装外部依赖闭包
-- [ ] 删除所有 `..` 相对 include（如 `../inc/platform.h`、`../../other_op/*.h`）
-- [ ] 本地化所有被实际使用的外部符号，按 4 类分组：
-  - 平台常量
-  - 基础常量 / traits
-  - common 层工具
-  - 算法 helper
-- [ ] 明确说明 `*_apt.cpp` / `*_apt.h` 是否仍依赖外部编译环境宏（如 `DTYPE_X1`、`GET_TILING_DATA_WITH_STRUCT`）
-- [ ] 如果入口已改造成头文件化封装，明确说明：
-  - 是否已按 tilingKey 的划分维度拆成独立入口函数
-  - 是否由 tiling struct 直接入参
-  - 是否只是新增模板参数但仍保留 `GM_ADDR` 形参声明
-  - 入口头里是否去掉了 `using namespace`，改用 `::` 显式限定
-  - 是否已用 `#if defined(__NPU_DEVICE__) ... #endif` 包住 kernel 实现
-
----
-
-## 11. TilingData struct 替换检查
-
-如果把 `BEGIN_TILING_DATA_DEF` 替换成 plain struct：
-- [ ] 是否已机械转换为普通 C++ struct（不需要额外加 `#pragma pack`）
-- [ ] 字段是否只保留 kernel 实际访问的（对比 kernel 代码中的 `tempTilingGm.xxx` 访问）
-- [ ] 字段类型和顺序是否与原始 `TILING_DATA_FIELD_DEF` 一致
-- [ ] 是否删除了只有其他 variant（如 grad、quant）使用的字段
-
----
-
-## 12. 入口函数改造检查
-
-如果把 `*_apt.cpp` 改造成 `<<<>>>` 直调入口：
-- [ ] 是否已去掉 `extern "C"`
-- [ ] 是否已去掉 `GET_TILING_DATA(xxx, tiling)` 或 `GET_TILING_DATA_WITH_STRUCT(xxx, tiling)`
-- [ ] `GM_ADDR tiling` 参数是否改成 `const XxxTilingData tilingData`（by value）
-- [ ] `TILING_KEY_IS(N)` 运行时分发是否已按 tilingKey 的实际划分维度拆成独立函数（可能按 dtype、计算模式或其他规则）
-- [ ] 如果原始代码有 `KERNEL_TASK_TYPE_DEFAULT`，是否保留了；如果没有，是否没有主动添加
-- [ ] workspace 参数如果保留，是否有 `(void)workspace;` 抑制未使用警告
-- [ ] `.cpp` 是否改成了 `.h`（头文件化，以便 host `.cpp` include）
-
----
-
-## 13. Host tiling 提取检查
-
-如果从 `op_host/xxx_tiling.cpp` 提取了 host tiling 逻辑：
-- [ ] `gert::TilingContext*` 是否已全部替换为 `PlatformAscendCManager::GetInstance()`
-- [ ] `OP_LOGE` / `OP_LOGI` 是否已替换为 `throw` 或 `printf`
-- [ ] `ge::DataType` 是否已替换为自定义 enum
-- [ ] `IMPL_OP_OPTILING` / `REGISTER_TILING_DATA_CLASS` 是否已删除
-- [ ] tiling 计算公式是否逐行保真搬运（特别是对齐/非对齐分支）
-- [ ] 是否只提取了当前 variant 需要的路径（如只要 SWIGLU_SINGLE，不要 SWIGLU_GRAD_SINGLE）
-- [ ] 返回值是否包含 `blockDim` + `tiling` struct
-
----
-
-## 14. Host 驱动检查
-
-如果创建了 standalone host 驱动：
-- [ ] 数据生成是否自包含（C++ 确定性生成，不依赖 Python）
-- [ ] golden 计算是否在 C++ 中用 float 精度完成
-- [ ] 是否测试了所有目标 dtype
-- [ ] 是否使用 `GM_ADDR` 贯穿 host/launch/kernel
-- [ ] `aclrtMalloc` 是否按 `reinterpret_cast<void**>(&devicePtr)` 形式使用
-- [ ] kernel launch 是否为 `xxx<<<blockDim, 0, stream>>>(inputDevice, outputDevice, ..., tilingData)`
-
----
-
-## 15. 原始逻辑 vs 适配改造区分检查
-
-- [ ] 计算逻辑、tiling 数学、数据搬运等原始代码是否保真搬运，未被"顺手优化"
-- [ ] 适配改造（入口拆分、宏替换、平台 API 替换）是否与原始逻辑改动分开，不混在一起
-
----
-
-## 16. 自包含检查
-
-- [ ] 适配结果是否只依赖 CANN SDK + ACL 运行时 + 标准 C++ 库
-- [ ] 是否不依赖目标仓库（如 cann-samples）中的其他 sample、公共 utils 或共享头文件
-- [ ] story 目录内是否所有需要的代码都已闭环
-
----
-
-## 17. `-xasc` host/device 双 pass 编译兼容检查
-
-如果 kernel 使用了 `MicroAPI`/`Reg` 编程模型（arch35 regbase 风格）：
-- [ ] 所有使用 `MicroAPI::RegTensor`、`MaskReg`、`CastTrait`、`DivSpecificMode` 等的实现头是否已加 `#if !defined(__NPU_HOST__)` 保护
-- [ ] `__global__` 入口函数是否使用"body 内 guard"模式（函数签名在 guard 外，实现在 `#if !defined(__NPU_HOST__)` 内）
-- [ ] `__global__` 入口是否为非模板函数（避免模板 `<<<>>>` 的 bf16 参数 mangling 问题）
-- [ ] CMakeLists.txt 是否添加了 `-D__local_mem__=` 编译选项
-- [ ] host 侧数据类型（如 `SampleBFloat16`）是否与 kernel 模板参数（如 `bfloat16_t`）严格分离，不混用
-
-判断是否需要本节检查的快速方法：grep kernel 实现头中是否出现 `MicroAPI::`、`__VEC_SCOPE__`、`RegTensor`。
+### 18.7 原则合规声明
+- kernel 实现代码零修改（除允许的 3 类修改外）？
+- tiling 计算逻辑零修改（除允许的 3 类修改外）？
+- 全量迁移：当前算子源码整文件搬，没有未经授权的字段/路径/variant 裁剪？
 
 ---
 
 ## 一句话验收标准
 
-**目标目录内的 kernel 代码应当做到：相对依赖清零、最小闭包明确、语义不变、自包含可编译、边界说明清楚。**
+**kernel 代码零修改；tiling 数学零修改；只改框架胶水；默认全量迁移；相对依赖清零；外部依赖最小闭包；自包含可编译；边界说明清楚。**
