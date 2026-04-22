@@ -9,35 +9,13 @@ Capture all a2-specific differences from a5 so that:
 - a5 patterns are not blindly reused on a2
 - the correct data path, buffer, and vec model is chosen from the start
 
-## 1. Hardware budget summary
+## 1. Hardware budgets and missing features
 
-| Resource | a2 (`b3`) | a5 (`950`) |
-|----------|-----------|------------|
-| Cube core count | **20** | **32** |
-| L0A | 64 KB | 64 KB |
-| L0B | 64 KB | 64 KB |
-| **L0C** | **128 KB** | **256 KB** |
-| **UB per sub-block** | **192 KB** | **256 KB** |
-| L1 | 512 KB | 512 KB |
-| Vec sub-blocks per cube core | 2 | 2 |
+For exact per-device capacities (`L0A`, `L0B`, `L0C`, `UB`, `L1`, cube core count, vec sub-blocks per core) see `agent/references/facts-device-runtime.md`. For the a2-missing a5 features (`@vf`, `Reg` / `RegList` / `MaskReg`, `l0c_to_ub`, `ub_to_l1_nd2nz`, `ub_to_l1_nz`, `micro`, `l0c_to_l1(float)`), see `agent/references/facts-authoring.md`.
 
-Key consequence: a5 tile strategies that fit L0C at 256 KB will overflow on a2.
-Always verify `TILE_M * TILE_N * 4 * 2 <= 128 KB` for float L0C DBuff.
+Key consequence for tile strategy: a5 tile strategies that fit L0C at 256 KB overflow on a2. Always verify `TILE_M * TILE_N * 4 * 2 <= 128 KB` for float L0C DBuff.
 
-## 2. Missing a5 features on a2
-
-a2 does **not** have:
-- `@vf` decorator — vec operations are written directly in the kernel body
-- `Reg` / `RegList` / `MaskReg` — no micro register pipeline
-- `l0c_to_ub` — cannot move L0C data directly to UB
-- `ub_to_l1_nd2nz` / `ub_to_l1_nz` — these are a5-only
-- `DualMode` enum on `l0c_to_ub` — not applicable since `l0c_to_ub` is absent
-- `micro` module imports — not available
-
-Additional restriction:
-- `l0c_to_l1` does **not** support `float` destination on `b*` devices
-
-## 3. Cube → vec data path on a2
+## 2. Cube → vec data path on a2
 
 Since `l0c_to_ub` is absent and `l0c_to_l1(float)` is blocked:
 
@@ -59,7 +37,7 @@ first consumer operation is `gm_to_ub_pad` on MTE2, not a V-pipe compute.
 - Index as `ws[GetCubeIdx(), slot, row_slice, col_slice]`
 - Cube writes full `TILE_M` rows; each vec sub-block reads `TILE_M // 2` rows
 
-## 3a. Vec → cube data path on a2
+## 3. Vec → cube data path on a2
 
 Since `ub_to_l1_nd2nz` and `ub_to_l1_nz` are a5-only, a2 cannot publish vec output
 directly from `UB` to `L1`.
@@ -94,6 +72,28 @@ Workspace design mirrors the cube -> vec bridge:
 Important synchronization fact from the simulator/runtime model:
 - cube-side `wait_vec()` succeeds only after **both** vec lanes have produced their tokens
 - this makes a full-tile cube reload safe after the two half-row vec writes complete
+
+## 3a. Cube-side matmul dependency reuse rule on a2
+
+The same high-level rule as a5 still applies on a2:
+- if one cube matmul only feeds a later cube matmul, prefer keeping that dependency on the
+  cube-side path instead of inventing a UB detour
+
+On a2 the practical boundary is stricter:
+- `l0c_to_l1` exists
+- but `l0c_to_l1(float)` is blocked on `b*` devices
+- and `l0c_to_ub` is absent
+
+So the stable rule is:
+- if the intermediate dependency can be republished to `L1` in a supported dtype, prefer
+  `L0C -> L1 -> L0 -> mmad`
+- do **not** route a pure cube-side dependency through `UB`
+- only fall back to GM workspace when the dependency truly needs a vec-side stage or when the
+  required `L1` destination dtype is unsupported
+
+Practical implication:
+- a2 still benefits from the same "avoid unnecessary `L0C -> UB -> L1` thinking" rule
+- the difference from a5 is not the existence of `l0c_to_l1`, but the narrower dtype surface
 
 ## 4. Sub-block execution model
 
@@ -130,6 +130,38 @@ All vec operations work on UB tensors directly (no Reg intermediate):
 | Select | `select` |
 | Mask | `set_mask`, `reset_mask` |
 
+### 5.1 Bitpacked `uint8` masks and scalar-fill `select`
+
+For a2 vec-side masking that is naturally bitpacked by column prefix, a practical
+shape is `Tensor(DT.uint8, [HALF_M, TILE_N // 8], Position.UB)`.
+
+Stable rules:
+- `compare(...)` / `compare_scalar(...)` produce packed-bit `uint8` masks for this path, and `select(...)` consumes the same packed form
+- do **not** treat `select` control as an expanded `[HALF_M, TILE_N]` byte-per-element `0/1` tensor when the hardware contract is bitpacked
+- for rowwise prefix or suffix masks, prefer synthesizing mask bytes with `compare_scalar(...)` against a reusable integer column-index tensor instead of populating every mask byte with `SetValueTo(...)`
+- `dup` does **not** support `uint8`, but whole-mask initialization can often be done efficiently through a width-compatible integer reinterpret such as `mask.reinterpret(DT.int)`
+- `SetValueTo` still writes only the first element of the destination view, so per-byte loops are correct as a fallback but expensive in simulator control flow
+- `select(..., SelectMode.TENSOR_SCALAR)` only uses the first scalar value from `src2`
+- for score-domain invalidation, a small scalar-fill source such as `Tensor(DT.float, [1, 64], Position.UB)` initialized with `dup(..., neg_large)` is sufficient; `src2` does not need to match the full score tile shape
+
+Use this when:
+- the control comes from an explicit packed `uint8` mask tensor
+- the fallback branch is a single scalar fill value like `neg_large` or `0.0`
+- you want to avoid allocating a full-size fallback tensor just for `select`
+- you want to amortize mask construction by building it once and reusing it across many vec operations
+
+Diagonal causal reuse rule:
+- for repeated diagonal masking on `[HALF_M, TILE_N]` tiles, it is valid to build one packed mask `Tensor(DT.uint8, [HALF_M, TILE_N // 8], Position.UB)` and apply one full-tile `select(...)`
+- if the diagonal geometry is stable across iterations, prebuild that packed mask once and reuse it
+- for a2 dense backward causal tails, full `128x128` q-tiles have stable subblock geometry and can reuse one static packed diagonal mask per `GetSubBlockIdx()`
+- tail `M` tiles cannot blindly reuse that full-tile mask when the kernel splits rows with `half_rows = CeilDiv(valid_m, 2)`, because the second subblock `row_begin` shifts away from the fixed `64`
+- in that case, keep the same packed-mask + one-`select(...)` pattern, but rebuild the packed mask dynamically only for the tail tile
+
+Column-index template trick:
+- when the packed mask compares against contiguous column ids, build a reusable integer template once, e.g. `Tensor(DT.int, [1, TILE_N], Position.UB)`
+- a compact a2 pattern is to reinterpret that tensor as `int64` and write two `int32` column ids per store while initializing `[0, 1, 2, ..., TILE_N - 1]`
+- later `compare_scalar(mask[row:row + 1, 0:TILE_N // 8], col_idx, valid_cols, CompareMode.LT)` synthesizes the whole row mask without scalar-per-byte loops
+
 ## 6. UB initialization with `dup`
 
 On a2, UB contents are undefined at kernel entry. There is no zero-initialization guarantee.
@@ -137,6 +169,11 @@ Operations like `muls(ub, ub, 0.0)` are unreliable on uninitialized buffers beca
 `0.0 × NaN = NaN`.
 
 **Use `dup(tensor, scalar_value)` to fill a UB tensor with a known value.**
+
+For the current validated a2 softmax kernels, a sufficiently negative finite
+sentinel such as `neg_large = -1.0e30` is the default way to materialize
+score-domain invalidation and running-max identity state. Treat literal
+`float("-inf")` as simulator-convenient but hardware-fragile.
 
 `dup` signature: `dup(dst: Tensor, value: Union[int, float, Var], ...)`
 
@@ -176,7 +213,7 @@ different sync-key groups.
 with auto_sync():
     for gmt in range(mt_begin, mt_end):
         # ... variable declarations ...
-        dup(ub_rmax_s, float('-inf'))  # V-pipe, safe here
+        dup(ub_rmax_s, neg_large)  # V-pipe, safe here
         for nt in range(0, tiles_n):
             # ... cube + vec tile processing ...
 ```
@@ -217,5 +254,7 @@ add(tmp_scalar_buf, ub_rmax_s, ub_zero_s)
 - `agent/example/kernels/a2/flash_attn_score_iter.py` — running max with `dup` initialization and `[M,1]` vmax
 - `agent/example/kernels/a2/flash_attn_unnorm.py` — delayed `expdiff` + final numerator accumulation on a2
 - `agent/example/kernels/a2/flash_attn_full.py` — delayed numerator accumulation plus running sum/final divide on a2
+- `agent/example/kernels/a2/flash_attn_full_pj_hif8_causal.py` — rowwise diagonal-tile causal masking plus `active_tiles_n` skip on a2, now with shared vec-side `DBuff` scratch for stage-1/2 overlap
+- `agent/example/kernels/a2/flash_attn_full_pj_half_block32_causal.py` — block-32 causal masking plus `active_tiles_n` skip on a2, also using the shared vec-side `DBuff` scratch lineage
 - `easyasc/stub_functions/vec/dupbrcb.py` — dup stub (validates dst is UB, infers repeat)
-- `easyasc/simulator/pipe_v.py` — dup simulator (`_execute_dup`): fills blocks per repeat
+- `easyasc/simulator_v2/ops/vec/v.py` and `easyasc/simulator_v2/ops/vec/_legacy_vpipe.py` — current vec runtime path for dup-style execution

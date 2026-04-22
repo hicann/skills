@@ -81,6 +81,27 @@ ws_cnt += 1
 The CvMutex lock/free cycle ensures the cube does not overwrite a slot
 that the vec is still reading from the previous iteration.
 
+## Tail note for workspace slices
+
+When an a2 cube -> vec kernel has `valid_m` / `valid_n` tails, keep the
+workspace bridge itself on stable tile shapes whenever possible:
+
+- cube side: prefer writing `0:TILE_M, 0:TILE_N` into workspace after tail
+  zero-fill in local buffers
+- vec side: prefer reading `row_begin:row_begin + row_count, 0:TILE_N` from
+  workspace, then handle `valid_n` with vec-side masking and final GM write
+  boundaries
+
+Reason:
+- `l0c_to_gm_nz2nd` and `gm_to_ub_pad` infer row stride from the parent GM
+  shape, not from a cropped workspace column span
+- a workspace slice like `[..., 0:row_count, 0:valid_n]` may therefore be too
+  small for the inferred stride even when the logical tail region is correct
+
+This is a workspace-bridge rule, not a general "never use GM tails" rule.
+Direct final GM boundaries such as `output[..., 0:valid_n]` still work in the
+usual way.
+
 ## Complete iteration skeleton
 
 ```python

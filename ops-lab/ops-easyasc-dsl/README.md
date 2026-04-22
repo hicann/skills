@@ -4,7 +4,7 @@
 
 ***I'm just curious how far AI can go, so the codes are 90%+ developed by AI in this repo. I'm just a software architect and code reviewer.***
 
-`ops-easyasc-dsl` ships the `easyasc` Python DSL and a skill-oriented repository layout for describing mixed Ascend-style kernels with a single authoring surface that can:
+`ops-easyasc-dsl` packages the easyasc DSL to AscendC workflow as a skill. It still provides the Python DSL for describing mixed Ascend-style kernels with a single authoring surface that can:
 
 - emit instruction IR from Python code
 - lower that IR into split cube/vec code
@@ -17,6 +17,18 @@ The repository is organized around three ideas:
 2. Let the framework build instruction IR, insert side-specific synchronization, and split the program into cube and vec paths.
 3. Validate the result either in the simulator or through generated runtime artifacts.
 
+## Skill entrypoint
+
+The user-facing skill entrypoint is [`skill/SKILL.md`](skill/SKILL.md). The reusable workflow lives under [`agent/`](agent/).
+
+Before reading archived runtime/docs content or running examples, restore them on demand:
+
+```bash
+bash agent/scripts/init.sh
+```
+
+This is idempotent and only restores missing trees.
+
 ## Why this repository exists
 
 The codebase is designed for kernel development, experimentation, and debugging. It is especially useful when you want to:
@@ -25,52 +37,45 @@ The codebase is designed for kernel development, experimentation, and debugging.
 - validate tail handling, tiling, and precision boundaries in simulation
 - inspect existing kernels for legal DSL patterns and implementation templates
 
-## First-time initialization
+## Installation
 
-This repository now stores the runtime package and the long-form docs in `agent/assets/ops-easyasc-dsl-runtime.tar.gz`, and stores the runnable examples in `agent/assets/ops-easyasc-dsl-example.tar.gz`.
-Before reading `doc/`, `doc_cn/`, importing `easyasc.*`, or running files under `agent/example/` from a fresh checkout, restore them once:
-
-```bash
-bash agent/scripts/init.sh
-```
-
-That script is idempotent and restores the archived `easyasc/`, `doc/`, `doc_cn/`, and `agent/example/` trees.
+No need. Just import `easyasc.a5` or `easyasc.a2` via whatever method you like, after running `bash agent/scripts/init.sh`.
 
 ## Quick start
 
-If you already have a compatible local conda environment for Ascend/CANN work, activate it first. `torch210npu` is only an example:
+Example environment (not required):
 
 ```bash
+# example only — adjust to your local setup
 conda activate torch210npu
 ```
 
-Then run the smallest runnable kernel example:
+Then run the smallest runnable kernel example (after `bash agent/scripts/init.sh`):
 
 ```bash
 python agent/example/kernels/a5/matmul_float_mmad.py
 ```
 
-That example now validates both execution modes:
+That example shows the minimal end-to-end loop:
 
 1. describe a kernel with `@kernel`
 2. launch it through `OpExec(..., simulator=True)`
-3. launch it again through `OpExec(..., simulator=False)`
-4. compare both outputs against a PyTorch reference
+3. compare the simulated output against a PyTorch reference
 
 ## Environment variables for `OpExec` build + CANNSIM (non-simulator)
 
 When you run `OpExec(kernel)` with the default `simulator=False`, the framework generates `b.sh` and `r.sh` next to your current working directory and runs them. Those scripts already define a portable baseline; set the variables below **before** starting Python if your machine differs from the defaults.
 
-| Variable | When to set | Typical default (in generated scripts) |
-|----------|-------------|----------------------------------------|
-| `ASCEND_HOME_PATH` | CANN tools are not already available in your shell environment | `<your-cann-install-root>` (the directory that contains `bin/setenv.bash`) |
+| Variable | When to set | Example value |
+|----------|-------------|---------------|
+| `ASCEND_HOME_PATH` | Required; points at your CANN toolkit root | `<path to your CANN install>` (directory that contains `bin/setenv.bash`) |
 | `ASCEND_CUSTOM_OPP_PATH` | Only if you chain extra custom OPP roots | Empty; scripts export it so `set -u` + `vendors/customize/bin/set_env.bash` stays safe |
 | `EASYASC_PYTHON_BIN` | CANN `opbuild` invokes `python3` and needs **NumPy** | Directory containing that interpreter (for example the `bin` directory of a conda env), prepended to `PATH` inside `b.sh` / `r.sh` |
 | `PYTHONPATH` | Python must import this repository | The repository root |
 
-Generated `b.sh` and `r.sh` resolve paths from **`EASYASC_ROOT`**, the directory where those scripts live (run codegen from the repository root so `b.sh` / `r.sh` end up there). They source `${ASCEND_HOME_PATH}/bin/setenv.bash` only when `ASCEND_HOME_PATH` is set and valid, export vendor `LD_LIBRARY_PATH`, and run `cannsim` for the aclnn smoke binary.
+Generated `b.sh` and `r.sh` resolve paths from **`EASYASC_ROOT`**, the directory where those scripts live (run codegen from the repository root so `b.sh` / `r.sh` end up there). They source `${ASCEND_HOME_PATH}/bin/setenv.bash` when present, export vendor `LD_LIBRARY_PATH`, and run `cannsim` for the aclnn smoke binary.
 
-If kernel packaging fails with missing shared libraries for `op_build`, either export a correct `ASCEND_HOME_PATH` or prepare the current shell so CANN tools are already on `PATH`. If it fails importing `numpy` under CANN Python, set `EASYASC_PYTHON_BIN` to a Python that has NumPy.
+If kernel packaging fails with missing shared libraries for `op_build`, ensure `setenv.bash` ran (correct `ASCEND_HOME_PATH`). If it fails importing `numpy` under CANN Python, set `EASYASC_PYTHON_BIN` to a Python that has NumPy.
 
 ## Core concepts
 
@@ -98,20 +103,25 @@ If kernel packaging fails with missing shared libraries for `op_build`, either e
 
 ## Repository layout
 
-- `skill/`: repository skill entrypoint that calls into the workflow under `agent/`
-- `agent/`: easyasc DSL to AscendC workflow, including the router, scripts, references, and packaged assets
-- `agent/example/kernels/`: curated sample kernels and kernel-focused notes, restored on demand by `agent/scripts/init.sh`
-- `historical automated tests/` (removed from this skill bundle): simulator, parser, and codegen regression tests
-- `agent/example/demo/`: manual runnable examples grouped by device family, restored on demand by `agent/scripts/init.sh`
-- `agent/example/demo/a2/`: a2-specific manual demos
-- `agent/example/demo/a5/`: a5/general manual demos and negative-case repros
-- `agent/example/demo/a5/negative_cases/`: intentionally failing manual samples that should be rejected early
-- `easyasc/`, `doc/`, `doc_cn/`: restored on demand by `agent/scripts/init.sh`
-- `agent/references/examples/kernel-catalog.md`: per-kernel selection index and study guide
+- `skill/` — skill entrypoint (`skill/SKILL.md`)
+- `agent/` — the reusable easyasc DSL to AscendC workflow
+  - `agent/ROUTER.md` — progressive-disclosure router
+  - `agent/scripts/` — repository-maintenance scripts (including `init.sh`)
+  - `agent/assets/` — archived runtime/docs (`ops-easyasc-dsl-runtime.tar.gz`) and example (`ops-easyasc-dsl-example.tar.gz`) payloads
+  - `agent/example/` — curated kernel examples and manual demos (restored on demand)
+  - `agent/references/` / `agent/playbooks/` / `agent/index/` — catalogs, playbooks, and JSON indexes
+- Restored on demand by `agent/scripts/init.sh`:
+  - `easyasc/` — DSL runtime and codegen package
+  - `doc/` — English documentation
+  - `doc_cn/` — Chinese documentation mirror
+  - `agent/example/kernels/` — curated sample kernels
+  - `agent/example/demo/` — manual runnable examples grouped by device family
+
+Note: `testcases/` is no longer part of the delivered skill bundle.
 
 ## Documentation map
 
-Run `bash agent/scripts/init.sh` first if `doc/` is not present.
+Documentation under `doc/` is restored by `agent/scripts/init.sh`:
 
 - [Quick Start](doc/01_quickstart.md)
 - [Programming Model](doc/02_programming_model.md)

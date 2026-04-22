@@ -7,6 +7,7 @@ normalized online softmax kernel with delayed `p` / `pv` stages and a non-aligne
 Typical targets:
 - `agent/example/kernels/a2/flash_attn_full.py`
 - `agent/example/kernels/a2/flash_attn_full_pj_hif8.py`
+- `agent/example/kernels/a2/flash_attn_full_pj_hif8_causal.py`
 
 Do not use this file as the first reference for generic tail bugs.
 For generic GM-boundary tail rules, read `agent/references/constraints/tail-safety.md` first.
@@ -107,7 +108,7 @@ Tail cases:
 - `valid_n == 0`
   - both halves fully invalid
 
-## 5. Why vec mask + `dup(-inf)` is the simplest score-domain fix
+## 5. Why vec mask + finite negative sentinel is the simplest score-domain fix
 
 For `float` vec ops on a2:
 - the active mask prefix length is `64`
@@ -120,11 +121,12 @@ That matches a `[HALF_M, 64]` score half perfectly:
 So the stable suffix invalidation pattern is:
 1. compute a 64-bit suffix-invalid mask
 2. `set_mask(0, low_mask)`
-3. `dup(score_half, float("-inf"))`
+3. `dup(score_half, neg_large)`
 4. `reset_mask()`
 
 This is usually simpler than materializing a `[HALF_M, 64]` flag tensor and then
-doing `select(...)` on the score half.
+doing `select(...)` on the score half. The intent is still `-inf` behavior, but
+the concrete fill should stay finite on hardware paths.
 
 Read next for exact vec mask semantics:
 - `agent/references/constraints/mask.md`
@@ -151,7 +153,8 @@ Examples:
 - `valid_cols = 0` -> all bits are `1`
 
 Validated repository tests:
-- `historical testcases/a2/test_sim_vec_mask_a2.py` (removed from this skill bundle)
+- `testcases/simulator/micro/test_simulator_v2_muladddst_mask.py`
+- `testcases/simulator/micro/test_simulator_v2_vec_ops_extended.py`
 
 ## 7. Stable scalar-mask construction trick
 
@@ -214,8 +217,8 @@ For `TILE_N = 128`, keep at least:
 - one mid-right-half case: `S2 % 128 == 96`
 - one last-column case: `S2 % 128 == 127`
 
-For `flash_attn_full_pj_hif8.py`, the validated local regression lives at:
-- `historical testcases/a2/test_flash_attn_full_pj_hif8_tail.py` (removed from this skill bundle)
+For `flash_attn_full_pj_hif8.py`, the validated runnable regression lives in the kernel self-check:
+- `agent/example/kernels/a2/flash_attn_full_pj_hif8.py`
 
 ## 10. Why `S1` tail is a different problem
 
@@ -249,13 +252,13 @@ For a normalized online softmax stage-1 score tile with `S1` tail:
 3. run the normal score tile, `rowmax`, `curr_m`, and `expdiff` flow on the
    full local score tile
 4. after `score_j - curr_m`, but before `exp(score_j)`, overwrite the local
-   invalid row suffix with `-inf`
+   invalid row suffix with a sufficiently negative finite sentinel
 5. keep the delayed `p` / `pv` path full-tile sized
 6. write back only `local_valid_m` rows to GM
 
 Why this point is stable:
-- masking invalid rows **before** `cmax` can create invalid-row `rowmax=-inf`
-  and unstable `-inf - (-inf)` behavior
+- masking invalid rows **before** `cmax` can create invalid-row sentinel `rowmax`
+  and unstable invalid-row subtraction behavior analogous to `-inf - (-inf)`
 - masking them **after** subtracting `curr_m` preserves the valid-row online
   softmax math
 - the invalid local rows then become `0` after `exp`, so they contribute
@@ -283,11 +286,61 @@ For `TILE_M = 128`, keep at least:
 Keep `S2` aligned while validating the new `S1` path first, so failures are
 easier to attribute.
 
-## 13. Files to study
+## 13. Causal diagonal tiles on a2
+
+Read this when extending the same normalized online-softmax pipeline from plain
+tail handling to left-up causal masking (`k_pos <= q_pos`).
+
+The stable tile classification is:
+- `nt < lmt`: the tile is fully valid
+- `nt == lmt`: the tile is diagonal and contains mixed valid/invalid columns
+- `nt > lmt`: the tile is fully invalid and should be skipped
+
+For the current validated causal kernel, the stable scheduling rule is:
+- clamp the stage-1/stage-2 loop to `active_tiles_n = Min(tiles_n, lmt + 1)`
+- still keep the outer `n_loops + 1` style drain shape by iterating to `active_tiles_n + 1`
+- this preserves the delayed `p @ v` flush while removing future fully-invalid tiles
+
+The diagonal tile is **not** a plain `valid_n` tail:
+- invalid columns vary by row
+- the stable local quantity is `valid_cols = sb_row + row + 1`
+- `sb_row` is the fixed subblock row origin (`0` or `64`)
+
+Stable implementation rule for the diagonal tile:
+1. load and scale the full `[HALF_M, TILE_N]` score tile
+2. prebuild reusable packed-bit masks once per subblock before the main tile loop:
+   - `causal_mask_left: Tensor(DT.uint8, [HALF_M, HALF_N // 8], Position.UB)`
+   - `causal_mask_right: Tensor(DT.uint8, [HALF_M, HALF_N // 8], Position.UB)`
+3. initialize one reusable integer column-index row for `[0, 1, ..., 63]`; the current validated kernel writes two `int32` entries at a time through an `int64` reinterpret to keep `SetValueTo(...)` count low
+4. use a Python-unrolled row loop (`py_range(HALF_M)`) only for the per-row threshold, and synthesize packed mask bytes with `compare_scalar(...)`:
+   - if `sb_row == 0`, build only `causal_mask_left[row]` with threshold `row + 1`
+   - if `sb_row == 64`, fill `causal_mask_left` to all ones and build only `causal_mask_right[row]` with threshold `row + 1`
+5. apply the packed masks with `select(..., SelectMode.TENSOR_SCALAR)` before `cmax` / `rowmax`
+6. if the same tile is also the final `S2` tail tile, apply the diagonal causal mask first and `valid_n` tail masking second
+
+Why this is the stable path:
+- it matches the current hardware / simulator rule that `compare_scalar(...)` and `select(...)` use packed-bit `uint8` control
+- it keeps the control path cheap by building the causal masks once per subblock instead of reconstructing them inside every diagonal-tile visit
+- it avoids the large simulator overhead of byte-by-byte `SetValueTo(...)` loops for mask construction
+- it avoids trying to repair causal semantics later in the `p` or `pv` path
+- it preserves the exact online-softmax updates for `row_max`, `expdiff`, and `row_sum`
+
+Minimal causal validation set:
+- one `S1 == S2` aligned case
+- one `S1 == S2` unaligned case
+- one `S1 < S2` case
+- one `S1 > S2` case
+- one multi-head case
+
+Validated runnable example:
+- `agent/example/kernels/a2/flash_attn_full_pj_hif8_causal.py`
+
+## 14. Files to study
 
 - `agent/example/kernels/a2/flash_attn_full_pj_hif8.py`
-- `historical testcases/a2/test_flash_attn_full_pj_hif8_tail.py` (removed from this skill bundle)
-- `historical testcases/a2/test_sim_vec_mask_a2.py` (removed from this skill bundle)
+- `agent/example/kernels/a2/flash_attn_full_pj_hif8_causal.py`
+- `testcases/simulator/micro/test_simulator_v2_muladddst_mask.py`
+- `testcases/simulator/micro/test_simulator_v2_vec_ops_extended.py`
 - `agent/references/constraints/tail-safety.md`
 - `agent/references/constraints/mask.md`
 - `agent/references/patterns/a2-cube-vec-cube-vec-softmax.md`

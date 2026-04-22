@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -8,48 +8,57 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
+#
+# Restore the archived runtime/docs payload and example payload into the repository.
+# Safe to run multiple times; only missing trees are restored.
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-RUNTIME_ARCHIVE_PATH="${REPO_ROOT}/agent/assets/ops-easyasc-dsl-runtime.tar.gz"
-EXAMPLE_ARCHIVE_PATH="${REPO_ROOT}/agent/assets/ops-easyasc-dsl-example.tar.gz"
 
-if [[ ! -f "${RUNTIME_ARCHIVE_PATH}" ]]; then
-    echo "archive not found: ${RUNTIME_ARCHIVE_PATH}" >&2
-    exit 1
-fi
+RUNTIME_ARCHIVE="${REPO_ROOT}/agent/assets/ops-easyasc-dsl-runtime.tar.gz"
+EXAMPLE_ARCHIVE="${REPO_ROOT}/agent/assets/ops-easyasc-dsl-example.tar.gz"
 
-if [[ ! -f "${EXAMPLE_ARCHIVE_PATH}" ]]; then
-    echo "archive not found: ${EXAMPLE_ARCHIVE_PATH}" >&2
-    exit 1
-fi
-
-missing_runtime=0
-for path in easyasc doc doc_cn; do
-    if [[ ! -e "${REPO_ROOT}/${path}" ]]; then
-        missing_runtime=1
-        break
+restore_runtime() {
+    if [ ! -f "${RUNTIME_ARCHIVE}" ]; then
+        echo "ERROR: runtime archive not found at ${RUNTIME_ARCHIVE}" >&2
+        return 1
     fi
-done
 
-missing_example=0
-if [[ ! -e "${REPO_ROOT}/agent/example" ]]; then
-    missing_example=1
-fi
+    local need_extract=0
+    for tree in easyasc doc doc_cn; do
+        if [ ! -d "${REPO_ROOT}/${tree}" ]; then
+            need_extract=1
+            break
+        fi
+    done
 
-if [[ "${missing_runtime}" -eq 0 && "${missing_example}" -eq 0 ]]; then
-    echo "easyasc/, doc/, doc_cn/, and agent/example/ are already present."
-    exit 0
-fi
+    if [ "${need_extract}" -eq 0 ]; then
+        echo "[init] runtime trees already present (easyasc/, doc/, doc_cn/) — skipping"
+        return 0
+    fi
 
-if [[ "${missing_runtime}" -eq 1 ]]; then
-    tar -xzf "${RUNTIME_ARCHIVE_PATH}" -C "${REPO_ROOT}" --skip-old-files
-    echo "restored easyasc/, doc/, and doc_cn/ from ${RUNTIME_ARCHIVE_PATH}"
-fi
+    echo "[init] restoring runtime/docs trees from ${RUNTIME_ARCHIVE}"
+    tar -xzf "${RUNTIME_ARCHIVE}" -C "${REPO_ROOT}"
+}
 
-if [[ "${missing_example}" -eq 1 ]]; then
-    tar -xzf "${EXAMPLE_ARCHIVE_PATH}" -C "${REPO_ROOT}" --skip-old-files
-    echo "restored agent/example/ from ${EXAMPLE_ARCHIVE_PATH}"
-fi
+restore_examples() {
+    if [ ! -f "${EXAMPLE_ARCHIVE}" ]; then
+        echo "ERROR: example archive not found at ${EXAMPLE_ARCHIVE}" >&2
+        return 1
+    fi
+
+    if [ -d "${REPO_ROOT}/agent/example" ]; then
+        echo "[init] agent/example/ already present — skipping"
+        return 0
+    fi
+
+    echo "[init] restoring agent/example/ from ${EXAMPLE_ARCHIVE}"
+    tar -xzf "${EXAMPLE_ARCHIVE}" -C "${REPO_ROOT}"
+}
+
+restore_runtime
+restore_examples
+
+echo "[init] done"

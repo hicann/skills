@@ -1,5 +1,7 @@
 # Cube-to-Vec-to-Cube-to-Vec Pattern
 
+> Generic baseline only. For a2 (b3) kernels, prefer `agent/references/patterns/a2-cube-vec-cube-vec.md` (and the softmax variant `a2-cube-vec-cube-vec-softmax.md`), which add delayed-consumer and running-statistic rules specific to a2.
+
 Read this file when one cube stage feeds vec logic, then another cube stage, then a final vec stage.
 This is the highest-complexity staged pattern currently worth documenting as a dedicated route.
 
@@ -30,6 +32,7 @@ In practice this often becomes a one-tile lookahead schedule with warmup and dra
 - do not normalize too early when the numerator and denominator streams must both finish first
 - when the live query side is truly one row, flatten `(B, H)` into one `BH` axis and keep `rows=1` instead of forcing a wider row tile
 - for half-input `BASES=256` attention on a5, keep the outer `256` tile in L1, use `splitk=64` for `q @ k.t()`, and `splitn=64` for `p @ v`
+- for fp8 decode attention with external scales, mask invalid tail columns to `-inf` before `rowmax`, scale the probability tile only after the float `row_sum` update, and compensate with a final `scale_v / P_SCALE`
 - if the delayed cube consumer wants packed-NZ input, pack the vec-produced tile in UB first, then publish that NZ view into `L1`
 
 ## One-tile lookahead scheduling detail
@@ -59,4 +62,5 @@ Delayed scalar state:
 - `agent/example/kernels/a5/test_mla_entire.py`
 - `agent/example/kernels/a5/mha_ifa.py`
 - `agent/example/kernels/a5/mha_ifa_256.py`
+- `agent/example/kernels/a5/mha_ifa_fp8_scale_256.py`
 - `agent/example/kernels/a5/mha_ifa_nz.py`

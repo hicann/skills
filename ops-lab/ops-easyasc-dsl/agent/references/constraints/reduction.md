@@ -79,11 +79,12 @@ before the inner loop using `dup`, then apply the update unconditionally every i
 
 | Accumulation | Identity element | Update operation | Example |
 |-------------|-----------------|-----------------|---------|
-| running max | `-inf` | `vmax(running, running, tile)` | online softmax max tracking |
+| running max | `neg_large` (finite negative sentinel) | `vmax(running, running, tile)` | online softmax max tracking |
 | running sum | `0.0` | `add(running, running, tile)` | online softmax sum accumulation |
 | running product | `1.0` | `mul(running, running, tile)` | decay chain products |
 
-Why this works: `max(-inf, x) = x`, `0 + x = x`, `1 × x = x` — the first iteration
+Why this works: with `neg_large` chosen below every valid tile value,
+`max(neg_large, x) = x`, `0 + x = x`, `1 × x = x` — the first iteration
 naturally produces the correct initial value without special-casing.
 
 **Choosing the right tensor format for the update operation:**
@@ -117,7 +118,7 @@ ub_rmax_s = Tensor(DT.float, [HALF_M, 1], Position.UB)
 
 with auto_sync():
     for gmt in range(mt_begin, mt_end):        # outer: M-tiles
-        dup(ub_rmax_s, float('-inf'))           # reset per M-tile
+        dup(ub_rmax_s, neg_large)               # reset per M-tile with the running-max identity
         for nt in range(0, tiles_n):            # inner: N-tiles
             # ... compute tile, get ub_max_s via cmax ...
             vmax(ub_rmax_s, ub_rmax_s, ub_max_s)  # accumulate

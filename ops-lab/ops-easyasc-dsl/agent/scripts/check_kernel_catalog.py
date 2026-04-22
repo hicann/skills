@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
-
 """Check kernel catalog consistency against repository files and generated index."""
 
 import argparse
@@ -17,17 +16,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
-SCRIPTS_DIR = Path(__file__).resolve().parent
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
 
 from build_agent_index import parse_catalog
 
-SKILL_ROOT = SCRIPTS_DIR.parent
-REPO_ROOT = SKILL_ROOT.parent
-DEFAULT_CATALOG = SKILL_ROOT / "references" / "examples" / "kernel-catalog.md"
-DEFAULT_INDEX = SKILL_ROOT / "index" / "kernels.json"
-DEFAULT_KERNEL_DIR = SKILL_ROOT / "example" / "kernels"
+ROOT = TOOLS_DIR.parent.parent
+DEFAULT_CATALOG = ROOT / "agent" / "references" / "examples" / "kernel-catalog.md"
+DEFAULT_INDEX = ROOT / "agent" / "index" / "kernels.json"
+DEFAULT_KERNEL_DIR = ROOT / "agent" / "example" / "kernels"
 REQUIRED_SCALAR_FIELDS = ["topology"]
 REQUIRED_LIST_FIELDS = ["study_for", "do_not_copy_when"]
 REQUIRED_TEXT_FIELDS = ["formula"]
@@ -45,7 +43,7 @@ def _warning(code: str, path: str, message: str, field: str = "") -> Dict[str, A
 
 
 def _kernel_files(root: Path, kernel_dir: Path) -> List[str]:
-    return sorted(str(path.relative_to(root)) for path in kernel_dir.rglob("*.py") if path.is_file())
+    return sorted(str(path.relative_to(root)) for path in kernel_dir.glob("*.py") if path.is_file())
 
 
 def _load_json(path: Path) -> Tuple[Dict[str, Any], str]:
@@ -56,9 +54,8 @@ def _load_json(path: Path) -> Tuple[Dict[str, Any], str]:
 
 
 def analyze_repo(
-    root: Path = REPO_ROOT, catalog_path: Path = DEFAULT_CATALOG,
-    index_path: Path = DEFAULT_INDEX,
-    kernel_dir: Path = DEFAULT_KERNEL_DIR,
+    root: Path = ROOT, catalog_path: Path = DEFAULT_CATALOG,
+    index_path: Path = DEFAULT_INDEX, kernel_dir: Path = DEFAULT_KERNEL_DIR,
 ) -> Dict[str, Any]:
     warnings: List[Dict[str, Any]] = []
 
@@ -83,7 +80,7 @@ def analyze_repo(
         if path in seen_paths:
             warnings.append(_warning(
                 "duplicate-entry-path", path,
-                "Catalog contains the same kernel path more than once."
+                "Catalog contains the same kernel path more than once.",
             ))
         else:
             seen_paths.add(path)
@@ -97,33 +94,27 @@ def analyze_repo(
             if not isinstance(value, str) or not value.strip():
                 warnings.append(_warning(
                     "missing-field", path,
-                    "Required scalar field is missing or empty.",
-                    field=field
+                    "Required scalar field is missing or empty.", field=field,
                 ))
 
         for field in REQUIRED_TEXT_FIELDS:
             value = entry.get(field)
-            _text_msg = ("Required text field is missing "
-                         "or empty.")
             if isinstance(value, str):
                 if not value.strip():
                     warnings.append(_warning(
                         "missing-field", path,
-                        _text_msg, field=field
+                        "Required text field is missing or empty.", field=field,
                     ))
             elif isinstance(value, list):
-                if not value or any(
-                    not isinstance(item, str)
-                    or not item.strip() for item in value
-                ):
+                if not value or any(not isinstance(item, str) or not item.strip() for item in value):
                     warnings.append(_warning(
                         "missing-field", path,
-                        _text_msg, field=field
+                        "Required text field is missing or empty.", field=field,
                     ))
             else:
                 warnings.append(_warning(
                     "missing-field", path,
-                    _text_msg, field=field
+                    "Required text field is missing or empty.", field=field,
                 ))
 
         for field in REQUIRED_LIST_FIELDS:
@@ -131,14 +122,12 @@ def analyze_repo(
             if not isinstance(value, list) or not value:
                 warnings.append(_warning(
                     "missing-field", path,
-                    "Required list field is missing or empty.",
-                    field=field
+                    "Required list field is missing or empty.", field=field,
                 ))
             elif any(not isinstance(item, str) or not item.strip() for item in value):
                 warnings.append(_warning(
                     "malformed-field", path,
-                    "List field contains an empty or non-string item.",
-                    field=field
+                    "List field contains an empty or non-string item.", field=field,
                 ))
 
     kernel_files = _kernel_files(root, kernel_dir)
@@ -146,16 +135,13 @@ def analyze_repo(
     for path in missing_from_catalog:
         warnings.append(_warning(
             "uncataloged-kernel", path,
-            "Kernel file exists under agent/example/kernels/ "
-            "but is missing from kernel-catalog.md."
+            "Kernel file exists under kernels/ but is missing from kernel-catalog.md.",
         ))
 
     if not index_path.exists():
         warnings.append(_warning(
-            "missing-index",
-            str(index_path.relative_to(root)),
-            "Generated kernel index file is missing. "
-            "Run `python3 agent/scripts/build_agent_index.py`."
+            "missing-index", str(index_path.relative_to(root)),
+            "Generated kernel index file is missing. Run `python3 tools/build_agent_index.py`.",
         ))
     else:
         index_payload, json_error = _load_json(index_path)
@@ -169,9 +155,8 @@ def analyze_repo(
                     _warning(
                         "stale-index",
                         str(index_path.relative_to(root)),
-                        "Generated kernel index does not match the "
-                        "current catalog. Run "
-                        "`python3 agent/scripts/build_agent_index.py`.",
+                        "Generated kernel index does not match the current catalog."
+                        " Run `python3 tools/build_agent_index.py`.",
                     )
                 )
 
@@ -197,8 +182,7 @@ def print_text(result: Dict[str, Any]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Check kernel catalog consistency against "
-        "repository files and generated index."
+        description="Check kernel catalog consistency against repository files and generated index.",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     parser.add_argument("--fail-on-warning", action="store_true", help="Return exit code 1 if any warning is found.")

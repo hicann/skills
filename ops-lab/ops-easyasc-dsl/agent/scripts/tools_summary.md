@@ -98,11 +98,14 @@
     - `atomic-add`
     - `two-pass`
   - Text output prints ranked paths plus `study_for` and `do_not_copy_when` guidance.
+  - In catalog-style output, `deep_note` is surfaced when a complex kernel has extra rationale outside the short catalog entry.
   - JSON output keeps scores, reasons, and fields for possible tool chaining.
   - v1 ranking is intentionally simple and explainable:
     - topology match has the highest fixed boost
     - explicit tags/features act as hard filters plus small score boosts
     - free-text query matching is based on token overlap and light prefix matching over name/path/formula/study fields
+    - softmax/normalized intent gets a small bonus when the entry explicitly says so
+    - unrequested specializations such as `causal`, `fp8`, `hif8`, or `block32` are slightly downranked so generic baselines stay ahead
   - The selector does not generate kernel code or replace constraint reading.
 
 ## Counter / Buffer Lifetime Checker

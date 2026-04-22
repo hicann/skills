@@ -116,6 +116,38 @@ Recommended split:
 - `stage1_cnt`: `score_ws` / `p_ws` producer slot rhythm
 - `stage2_cnt`: delayed consumer slot rhythm
 
+### 3. If a delayed consumer reuses a producer operand, match buffer depth to the overlap
+
+Sometimes the delayed cube stage needs not only the vec result, but also one of the
+original stage-1 operands again.
+
+Concrete example from dense attention backward:
+- stage 1 loads `k_j` and computes `qk_j = q @ k_j^T`
+- vec computes `dqk_j`
+- delayed cube stage later computes `gq += dqk_j @ k_j`
+
+If you want to avoid reloading `k_j` from GM, keep that operand family on chip and reuse it
+from the delayed stage.
+
+Important overlap rule:
+- for a one-tile lookahead loop, `DBuff` is often **not** enough for a reused producer operand
+- while the delayed stage is still consuming tile `j`, the producer may already be starting tile `j+2`
+- with only two slots, tile `j+2` can overwrite slot `j` before the delayed consumer is done
+
+Stable rule for this case:
+- promote only the reused delayed operand family to `TBuff`
+- keep unrelated families such as `v` on `DBuff` if they are not reused by the delayed stage
+- let the delayed consumer index that `TBuff` by its own delayed-stage lineage, not by the
+  immediate producer slot
+
+Practical outcome:
+- `k` may need `TBuff`
+- `v` may still stay `DBuff`
+- the extra on-chip slot can be cheaper than a second GM read on every tile
+
+This is a lifetime decision, not a micro-optimization accident.
+Choose the buffer depth from the real overlap window.
+
 ## Cross-side synchronization
 
 This pattern has two ownership edges.
@@ -179,7 +211,7 @@ Important simulator/runtime fact:
 
 If the vec stage uses running row max across tiles:
 - keep the running state in `[HALF_M, 1]` scalar format
-- initialize with `dup(float('-inf'))`
+- initialize with `dup(neg_large)` where `neg_large` is a sufficiently large finite negative sentinel
 - update with `vmax(ub_rmax_s, ub_rmax_s, ub_max_s)`
 - broadcast only after the scalar update using `brcb`
 
@@ -210,6 +242,11 @@ Why this order is helpful:
 - the reused `L0C` family is naturally free after `score_j -> score_ws`
 - the delayed cube stage can then reuse that same `L0C` family safely
 - one shared `l0c_cnt` remains easy to reason about
+
+If the delayed stage also reuses stage-1 `k_j` on chip:
+- the schedule is still "produce `j`, then consume `j-1`"
+- but the `k` buffer family now lives longer than the immediate `v` family
+- reflect that longer lifetime in the buffer depth (`TBuff`) and in the counter choice
 
 ## Output layout rule
 

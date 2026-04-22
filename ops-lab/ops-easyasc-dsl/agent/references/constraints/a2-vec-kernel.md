@@ -109,7 +109,7 @@ If the later path assumes finite floats, sanitize first:
 
 ```python
 absub <<= x.abs()
-compare_scalar(finiteflag, absub, float("inf"), CompareMode.LT)
+compare_scalar(finiteflag, absub, FLOAT32_FINITE_MAX, CompareMode.LE)
 select(workub, finiteflag, x, 0.0)
 ```
 
@@ -119,7 +119,8 @@ Then restore original non-finite values at the end:
 select(outub, finiteflag, outub, x)
 ```
 
-This avoids pushing `NaN`/`Inf` through exponent extraction or scale math.
+This avoids pushing `NaN`/`Inf` through exponent extraction or scale math while
+keeping the control constant finite.
 
 ## 5. Bit-level float analysis with `reinterpret`
 

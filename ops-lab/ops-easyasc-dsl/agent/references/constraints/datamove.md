@@ -40,8 +40,21 @@ Files to study:
 For unaligned GM widths, allocate UB second dim to aligned width and rely on padded transfer behavior.
 Do not shrink the UB tensor shape to the logical width.
 
+For narrow a5 vec-only row kernels, a useful specialization is:
+- keep the logical host contract as `[rows, H]`
+- when `H < 64`, still stage the chunk in UB as `[rows, 64]`
+- use `gm_to_ub_pad(..., burst_len_element=H, dst_stride=(64 - H) / C0)` to zero-pad each row on load
+- run the same `@vf()` row logic against `row_stride = 64`
+- write back with `ub_to_gm_pad(..., burst_len_element=H, src_stride=(64 - H) / C0)` so only the logical columns return to GM
+- this is a good fit when the vec math is row-recursive and you want one shared `@vf()` body for both wide rows and narrow `H < 64` rows
+
+Practical limit:
+- for float32, this padding shortcut is cleanest when the row-width gap is expressible in `C0=8` units
+- it does not solve the wider-column tail case by itself when `H >= 64` but `H % 64 != 0`
+
 Files to study:
 - `agent/example/kernels/a5/vec_unaligned_gm_to_ub_pad.py`
+- `agent/example/kernels/a5/chunk_row_cumsum.py`
 
 ## 4. Strided GM gather without host `permute`
 

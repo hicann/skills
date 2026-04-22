@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
-
 """Build machine-readable agent indexes from the human-readable example catalogs."""
 
 import argparse
@@ -17,12 +16,11 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-SKILL_ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = SKILL_ROOT.parent
-KERNEL_CATALOG = SKILL_ROOT / "references" / "examples" / "kernel-catalog.md"
-TOOL_CATALOG = SKILL_ROOT / "references" / "examples" / "tool-catalog.md"
-KERNEL_INDEX = SKILL_ROOT / "index" / "kernels.json"
-TOOL_INDEX = SKILL_ROOT / "index" / "tools.json"
+ROOT = Path(__file__).resolve().parent.parent.parent
+KERNEL_CATALOG = ROOT / "agent" / "references" / "examples" / "kernel-catalog.md"
+TOOL_CATALOG = ROOT / "agent" / "references" / "examples" / "tool-catalog.md"
+KERNEL_INDEX = ROOT / "agent" / "index" / "kernels.json"
+TOOL_INDEX = ROOT / "agent" / "index" / "tools.json"
 
 HEADING_RE = re.compile(r"^###\s+`([^`]+)`\s*$")
 FIELD_RE = re.compile(r"^-\s+([A-Za-z0-9_ /-]+):(?:\s*(.*))?$")
@@ -49,7 +47,7 @@ def _finalize_entry(entry: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
     return entry
 
 
-def parse_catalog(path: Path, kind: str, root: Path = REPO_ROOT) -> Dict[str, Any]:
+def parse_catalog(path: Path, kind: str, root: Path = ROOT) -> Dict[str, Any]:
     lines = path.read_text(encoding="utf-8").splitlines()
     entries: List[Dict[str, Any]] = []
     current_category: Optional[str] = None
@@ -135,7 +133,7 @@ def parse_catalog(path: Path, kind: str, root: Path = REPO_ROOT) -> Dict[str, An
 
     return {
         "schema_version": 1,
-        "generated_by": "agent/scripts/build_agent_index.py",
+        "generated_by": "tools/build_agent_index.py",
         "source": source_path,
         "entry_count": len(entries),
         "entries": entries,

@@ -67,7 +67,7 @@ When behavior is subtle, derive documentation from the implementation path, not 
 Typical sources:
 - `easyasc/`
 - `agent/example/kernels/`
-- `historical automated tests/` (removed from this skill bundle)
+- `testcases/`
 - `doc/`
 - `agent/scripts/`
 
@@ -83,11 +83,10 @@ If Chinese documentation also needs updating, keep the English source coherent f
 ## 8. Update owner docs carefully
 
 If a repository change affects the documentation map or high-level structure, refresh the owner docs that describe it:
-- `skill/SKILL.md` when the repository skill entrypoint or skill-level workflow changes
 - `README.md`, `README_CN.md` when the top-level documentation entry map changed
 - `agent/references/repo-map.md` when top-level layout or ownership changed
 - `doc/11_architecture_for_contributors.md` when contributor-facing architecture or subsystem ownership changed
-- `historical testcases/README.md` (removed from this skill bundle) when the test-suite layout or fixture/demo boundary changed
+- `testcases/README.md` when the test-suite layout or fixture/demo boundary changed
 
 If kernel files are added, update:
 - `agent/references/examples/kernel-catalog.md`

@@ -49,7 +49,18 @@ Common failure modes:
 
 When in doubt, preserve higher precision until the stage boundary that really needs the cast.
 
-## 5. Special repository patterns
+## 5. Finite sentinels instead of literal infinities
+
+When a fill value is only meant to stand in for `-inf` or `+inf` semantics:
+- do not fill with literal `float("inf")` or `float("-inf")`
+- fill with a sufficiently large finite positive/negative sentinel instead
+- choose the magnitude from the real numeric range and dtype path of that stage
+
+Keep the semantic rule in mind:
+- the sentinel must stay beyond every valid value that the later max/min/reduction logic should ever see
+- document the math as "`-inf` / `+inf` behavior" if that is the intent, but keep the concrete fill finite
+
+## 6. Special repository patterns
 
 Stable patterns already present in this repository:
 - float-output baseline matmul
@@ -73,7 +84,7 @@ Repeat-along-new-axis pattern:
 Alignment rule for half reads:
 - for large non-contiguous half reads over `K`, `TILE_K=256` (512B) is robust
 
-## 6. Layout-sensitive precision rules
+## 7. Layout-sensitive precision rules
 
 Precision is often tied to layout and staging decisions.
 Examples:
@@ -81,7 +92,7 @@ Examples:
 - do not republish freshly packed fp8 UB data to a later stage if the downstream consumer expects ND semantics instead of the packed view
 - on a2, treat `uint8` compare outputs as control values only; if float math depends on them, choose the float branches with `select(...)`
 
-## 7. Validation rule
+## 8. Validation rule
 
 When testing a precision-sensitive kernel:
 - compare against the exact reference formula

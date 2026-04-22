@@ -55,7 +55,8 @@ This is why many call sites that only want the low 64-bit prefix use:
 - `set_mask(0, low_mask)`
 
 Validated repository test:
-- `historical testcases/a2/test_sim_vec_mask_a2.py` (removed from this skill bundle)
+- `testcases/simulator/micro/test_simulator_v2_muladddst_mask.py`
+- `testcases/simulator/micro/test_simulator_v2_vec_ops_extended.py`
 
 ### `reset_mask()`
 
@@ -167,6 +168,14 @@ These ops currently ignore the vec mask entirely and follow only their own norma
 - `mergesort4`
 - `mergesort_2seq`
 - `brcb`
+
+For the current V2 path, `compare(...)` / `compare_scalar(...)` and `select(...)`
+also use their own explicit control tensor semantics:
+- the current vec mask from `set_mask(...)` is irrelevant to them
+- when the control tensor is a packed-bit `uint8` mask, the shape is `[..., N // 8]`,
+  not an expanded `[..., N]` byte-per-element mask
+- practical example: packed causal control for a `[64, 64]` half-tile is
+  `Tensor(DT.uint8, [64, 8], Position.UB)`
 
 ## 5. Deprecated / pending pieces
 

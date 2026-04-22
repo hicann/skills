@@ -1,5 +1,7 @@
 # Vec-to-Cube-to-Vec Pattern
 
+> Generic baseline only. For a2 (b3) kernels, prefer the a2-specific patterns under `agent/references/patterns/` (e.g., `a2-cube-vec.md`, `a2-cube-vec-cube.md`) and read `agent/references/constraints/a2-device.md` for device-side rules.
+
 Read this file when the kernel needs vec preprocessing, cube compute, and vec postprocessing in one fused flow.
 
 ## Use this pattern when

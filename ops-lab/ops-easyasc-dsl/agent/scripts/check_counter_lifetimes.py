@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
-
 """Check counter/buffer lifetime smells in kernel files."""
 
 import argparse
@@ -18,9 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-SKILL_ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = SKILL_ROOT.parent
-DEFAULT_SCAN_ROOT = SKILL_ROOT / "example" / "kernels"
+ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_SCAN_ROOT = ROOT / "agent" / "example" / "kernels"
 GENERIC_COUNTER_NAMES = {"cnt", "counter"}
 BUFFER_BUILDERS = {"DBuff", "TBuff"}
 
@@ -129,7 +127,7 @@ def _iter_python_files(paths: Sequence[str]) -> List[Path]:
     for raw_path in paths:
         path = Path(raw_path)
         if not path.is_absolute():
-            path = REPO_ROOT / path
+            path = ROOT / path
         if path.is_dir():
             collected.extend(sorted(item for item in path.rglob("*.py") if item.is_file()))
         elif path.is_file():
@@ -208,8 +206,8 @@ def analyze_file(path: Path) -> Dict[str, Any]:
                 _warning(
                     "generic-counter-name",
                     counter_name,
-                    "Use a stage-owned counter name such as l1_cnt, l0c_cnt, "
-                    "tile_cnt, or stage1_cnt instead of a generic name.",
+                    "Use a stage-owned counter name such as l1_cnt, l0c_cnt, tile_cnt, or stage1_cnt"
+                    " instead of a generic name.",
                     [decl["line"]] if decl else summary["use_lines"],
                 )
             )
@@ -219,8 +217,8 @@ def analyze_file(path: Path) -> Dict[str, Any]:
                 _warning(
                     "counter-never-incremented",
                     counter_name,
-                    "Counter indexes buffers but no '+=' increment site was found. "
-                    "Verify that slot lineage is intentional.",
+                    "Counter indexes buffers but no '+=' increment site was found."
+                    " Verify that slot lineage is intentional.",
                     summary["use_lines"],
                 )
             )
@@ -230,9 +228,8 @@ def analyze_file(path: Path) -> Dict[str, Any]:
                 _warning(
                     "multiple-increment-sites",
                     counter_name,
-                    "Counter is incremented at multiple source locations. "
-                    "This often means different lifetimes or loop-owned "
-                    "rhythms were mixed together.",
+                    "Counter is incremented at multiple source locations."
+                    " This often means different lifetimes or loop-owned rhythms were mixed together.",
                     summary["increment_lines"],
                 )
             )
@@ -242,24 +239,23 @@ def analyze_file(path: Path) -> Dict[str, Any]:
                 _warning(
                     "multiple-loop-owned-increments",
                     counter_name,
-                    "Counter is incremented under different loop signatures. "
-                    "Different loop-owned lifetimes should usually use "
-                    "different counters.",
+                    "Counter is incremented under different loop signatures."
+                    " Different loop-owned lifetimes should usually use different counters.",
                     summary["increment_lines"],
                 )
             )
 
-        if ("L1" in positions
-                and any(pos in positions for pos in ["L0C", "UB"])
-                and len({depth for _, depth in usage_by_position_depth}) > 1):
+        if (
+            "L1" in positions
+            and any(pos in positions for pos in ["L0C", "UB"])
+            and len({depth for _, depth in usage_by_position_depth}) > 1
+        ):
             warnings.append(
                 _warning(
                     "mixed-positions-across-depths",
                     counter_name,
-                    "Counter mixes L1 streaming ownership with outer "
-                    "L0C/UB ownership across different loop depths. "
-                    "Review whether separate stage lifetimes were "
-                    "collapsed into one counter.",
+                    "Counter mixes L1 streaming ownership with outer L0C/UB ownership across different loop depths."
+                    " Review whether separate stage lifetimes were collapsed into one counter.",
                     summary["use_lines"],
                 )
             )
@@ -269,15 +265,14 @@ def analyze_file(path: Path) -> Dict[str, Any]:
                 _warning(
                     "conditional-stage-sharing",
                     counter_name,
-                    "Counter is used across different root conditional "
-                    "branches. Review delayed producer/consumer ownership "
-                    "and confirm separate counters are not needed.",
+                    "Counter is used across different root conditional branches."
+                    " Review delayed producer/consumer ownership and confirm separate counters are not needed.",
                     summary["use_lines"] + summary["increment_lines"],
                 )
             )
 
     try:
-        display_path = str(path.relative_to(REPO_ROOT))
+        display_path = str(path.relative_to(ROOT))
     except ValueError:
         display_path = str(path)
 
@@ -325,7 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     parser.add_argument(
         "--show-summary", action="store_true",
-        help="Print per-counter summaries even when no warnings exist."
+        help="Print per-counter summaries even when no warnings exist.",
     )
     parser.add_argument("--fail-on-warning", action="store_true", help="Return exit code 1 if any warning is found.")
     return parser

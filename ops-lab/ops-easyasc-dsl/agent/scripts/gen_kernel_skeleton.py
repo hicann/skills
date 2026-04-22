@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
-
 """Generate repository-style kernel skeletons."""
 
 import argparse
@@ -17,8 +16,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
-SKILL_ROOT = Path(__file__).resolve().parent.parent
-KERNEL_DIR = SKILL_ROOT / "example" / "kernels"
+ROOT = Path(__file__).resolve().parent.parent.parent
+KERNEL_DIR = ROOT / "agent" / "example" / "kernels"
 VALID_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -82,8 +81,7 @@ def _resolve_k_loop_mode(k_loop_mode: str) -> str:
 
 
 def _cube_stage_block(
-    resolved_k_loop_mode: str, layout: str,
-    dest_expr: str, extra_note: str = "",
+    resolved_k_loop_mode: str, layout: str, dest_expr: str, extra_note: str = "",
 ) -> Tuple[str, str, str]:
     if resolved_k_loop_mode == "always":
         load_note = (
@@ -113,9 +111,10 @@ def _cube_stage_block(
             ]
         )
         tile_k_decl = "TILE_K = 128"
-        k_loop_note = ("# - K is currently scaffolded as a tiled loop; "
-                       "switch to --k-loop-mode never if the template "
-                       "should be one-shot")
+        k_loop_note = (
+            "# - K is currently scaffolded as a tiled loop;"
+            " switch to --k-loop-mode never if the template should be one-shot"
+        )
         if extra_note:
             k_loop_note += f"\n{extra_note}"
         return block, tile_k_decl, k_loop_note
@@ -145,9 +144,10 @@ def _cube_stage_block(
         ]
     )
     tile_k_decl = "TILE_K = 128  # TODO: set this to the intended one-shot K width or re-enable the K loop"
-    k_loop_note = ("# - this scaffold intentionally omits a K loop; "
-                   "make TILE_K match the intended one-shot K width "
-                   "or add the loop later")
+    k_loop_note = (
+        "# - this scaffold intentionally omits a K loop;"
+        " make TILE_K match the intended one-shot K width or add the loop later"
+    )
     if extra_note:
         k_loop_note += f"\n{extra_note}"
     return block, tile_k_decl, k_loop_note
@@ -184,21 +184,17 @@ def _simple_postprocess_vf_stub(extra_note: str = "") -> str:
 def _lookahead_common_notes(first_line: str, edge_line: str, extra_lines: list[str]) -> str:
     lines = [
         first_line,
-        ("# - this is a pipeline skeleton with running state "
-         "and a delayed consumer, not a generic four-stage "
-         "fusion template"),
+        "# - this is a pipeline skeleton with running state and a delayed consumer,"
+        " not a generic four-stage fusion template",
         edge_line,
         "# - this template assumes one-tile lookahead: stage1 runs at block t, stage2 drains block t - 1",
         "# - keep stage1_cnt and stage2_cnt separate unless you can prove the lifetimes are identical",
         "# - running state lives across iterations; do not treat it like a throwaway scratch buffer",
         "# - running state is sharded by split-M vec-side row ownership; each subblock keeps only its own row slice",
-        ("# - this v1 scaffold keeps both cube stages one-shot; "
-         "add per-stage tiled-K loops only when a real kernel "
-         "needs them"),
-        ("# - this v1 scaffold uses split-M style vec-side "
-         "row ownership via `GetSubBlockIdx()` slices; fork a "
-         "second profile if a real kernel wants single-owner "
-         "or another ownership scheme"),
+        "# - this v1 scaffold keeps both cube stages one-shot;"
+        " add per-stage tiled-K loops only when a real kernel needs them",
+        "# - this v1 scaffold uses split-M style vec-side row ownership via `GetSubBlockIdx()` slices;"
+        " fork a second profile if a real kernel wants single-owner or another ownership scheme",
         *extra_lines,
     ]
     return "\n".join(lines)
@@ -322,21 +318,17 @@ def _main_stub(name: str, topology: str, layout: str) -> str:
     if topology == "cube->vec":
         input_block = input_block.replace(
             "z_ref =",
-            "# TODO: replace this with the exact "
-            "postprocess contract\n    z_ref ="
+            "# TODO: replace this with the exact postprocess contract\n    z_ref =",
         )
     if topology == "vec->cube":
         input_block = input_block.replace(
             "z_ref =",
-            "# TODO: replace this with the exact "
-            "preprocess-then-matmul contract\n    z_ref ="
+            "# TODO: replace this with the exact preprocess-then-matmul contract\n    z_ref =",
         )
     if topology == "vec->cube->vec":
         input_block = input_block.replace(
             "z_ref =",
-            "# TODO: replace this with the exact "
-            "preprocess-then-matmul-then-postprocess "
-            "contract\n    z_ref ="
+            "# TODO: replace this with the exact preprocess-then-matmul-then-postprocess contract\n    z_ref =",
         )
 
     return f'''
@@ -389,14 +381,14 @@ def render_cube_only(
                     # - keep split-k legality and accumulation semantics explicit
                     # - this is not a generic plain/splitn choice point
                     matmul(l0c[tile_cnt][:valid_m, :valid_n], l1x[l1_cnt], l1y[l1_cnt], is_init=(k0 == 0))'''
-            tile_k_decl = "TILE_K = 256\nSPLIT_K = 2  # TODO: replace with the intended split-k factor"
+            tile_k_decl = (
+                "TILE_K = 256\n"
+                "SPLIT_K = 2  # TODO: replace with the intended split-k factor"
+            )
             k_loop_note = (
-                "# - this scaffold is for split-k style cube matmul, "
-                "not a generic tiled-K baseline\n"
-                "# - choose SPLIT_K explicitly and keep its legality "
-                "aligned with the real kernel\n"
-                "# - here split-k coexists with an outer GM->L1 "
-                "TILE_K loop"
+                "# - this scaffold is for split-k style cube matmul, not a generic tiled-K baseline\n"
+                "# - choose SPLIT_K explicitly and keep its legality aligned with the real kernel\n"
+                "# - here split-k coexists with an outer GM->L1 TILE_K loop"
             )
         else:
             k_loop_block = '''                # TODO:
@@ -409,36 +401,27 @@ def render_cube_only(
                 # TODO:
                 # - replace this placeholder with the exact split-k matmul call used by the target kernel
                 # - keep split-k legality and accumulation semantics explicit
-                # - split-k here is the internal matmul computation loop,
-                #   even though the outer GM->L1 path is one-shot over K
+                # - split-k here is the internal matmul computation loop, even though the outer GM->L1 path is one-shot over K
                 matmul(l0c[tile_cnt][:valid_m, :valid_n], l1x[l1_cnt], l1y[l1_cnt])'''
             tile_k_decl = (
-                "TILE_K = 256  # TODO: set this to the intended "
-                "one-shot K width\n"
-                "SPLIT_K = 2  # TODO: replace with the intended "
-                "split-k factor"
+                "TILE_K = 256  # TODO: set this to the intended one-shot K width\n"
+                "SPLIT_K = 2  # TODO: replace with the intended split-k factor"
             )
             k_loop_note = (
-                "# - this scaffold is for split-k style cube matmul, "
-                "not a generic tiled-K baseline\n"
-                "# - choose SPLIT_K explicitly and keep its legality "
-                "aligned with the real kernel\n"
-                "# - here split-k is internal to the matmul while "
-                "the outer GM->L1 path is one-shot over K"
+                "# - this scaffold is for split-k style cube matmul, not a generic tiled-K baseline\n"
+                "# - choose SPLIT_K explicitly and keep its legality aligned with the real kernel\n"
+                "# - here split-k is internal to the matmul while the outer GM->L1 path is one-shot over K"
             )
         profile_comment = "# profile:\n#   splitk\n#\n"
         profile_notes = (
-            "# - keep split-k accumulation/init semantics "
-            "explicit instead of treating this like plain matmul\n"
-            "# - if downstream merge or postprocess depends on "
-            "split-k, keep that coupling visible in comments "
-            "and validation"
+            "# - keep split-k accumulation/init semantics explicit"
+            " instead of treating this like plain matmul\n"
+            "# - if downstream merge or postprocess depends on split-k,"
+            " keep that coupling visible in comments and validation"
         )
         l1_buffer_decls = (
-            "    l1x = DBuff(DT.half, [TILE_M, TILE_K], "
-            "Position.L1)\n"
-            "    l1y = DBuff(DT.half, [TILE_N, TILE_K], "
-            "Position.L1)"
+            "    l1x = DBuff(DT.half, [TILE_M, TILE_K], Position.L1)\n"
+            "    l1y = DBuff(DT.half, [TILE_N, TILE_K], Position.L1)"
         )
     elif resolved_profile == "kmkn":
         if layout != "kmkn":
@@ -450,8 +433,7 @@ def render_cube_only(
                     # TODO:
                     # - KMKN path keeps x/y staged as [K, M] / [K, N] in L1
                     # - keep the transpose-at-call-site form explicit instead of hiding it in a generic comment
-                    # - if the target kernel needs shape bindings or stricter
-                    #   alignment guards, add them near the runnable stub
+                    # - if the target kernel needs shape bindings or stricter alignment guards, add them near the runnable stub
                     l1x[l1_cnt][0:valid_k, 0:valid_m] <<= x[k0:k0 + valid_k, m0:m0 + valid_m]
                     l1y[l1_cnt][0:valid_k, 0:valid_n] <<= y[k0:k0 + valid_k, n0:n0 + valid_n]
 
@@ -462,19 +444,17 @@ def render_cube_only(
                            m=valid_m, n=valid_n, k=valid_k, is_init=(k0 == 0))'''
             tile_k_decl = "TILE_K = 128"
             k_loop_note = (
-                "# - this scaffold is for KMKN-style staged "
-                "operands, not a generic comment-only layout hint\n"
-                "# - keep x/y loads as [K, M] / [K, N] and "
-                "transpose only at the matmul call site\n"
-                "# - if the target kernel has stricter alignment "
-                "guards, keep them explicit in validation"
+                "# - this scaffold is for KMKN-style staged operands,"
+                " not a generic comment-only layout hint\n"
+                "# - keep x/y loads as [K, M] / [K, N] and transpose only at the matmul call site\n"
+                "# - if the target kernel has stricter alignment guards,"
+                " keep them explicit in validation"
             )
         else:
             k_loop_block = '''                # TODO:
                 # - KMKN path keeps x/y staged as [K, M] / [K, N] in L1
                 # - this one-shot form only makes sense if TILE_K matches the intended full-K staging width
-                # - if the target kernel needs shape bindings or stricter
-                #   alignment guards, add them near the runnable stub
+                # - if the target kernel needs shape bindings or stricter alignment guards, add them near the runnable stub
                 l1x[l1_cnt][0:K, 0:valid_m] <<= x[0:K, m0:m0 + valid_m]
                 l1y[l1_cnt][0:K, 0:valid_n] <<= y[0:K, n0:n0 + valid_n]
 
@@ -484,38 +464,34 @@ def render_cube_only(
                 matmul(l0c[tile_cnt][:valid_m, :valid_n], l1x[l1_cnt].T, l1y[l1_cnt].T, m=valid_m, n=valid_n, k=K)'''
             tile_k_decl = "TILE_K = 128  # TODO: set this to the intended one-shot K width or re-enable the K loop"
             k_loop_note = (
-                "# - this scaffold is for KMKN-style staged "
-                "operands, not a generic comment-only layout hint\n"
-                "# - the one-shot form still keeps [K, M] / [K, N] "
-                "staging plus transpose-at-call-site explicit\n"
-                "# - make TILE_K match the intended full-K width "
-                "before treating this as runnable"
+                "# - this scaffold is for KMKN-style staged operands,"
+                " not a generic comment-only layout hint\n"
+                "# - the one-shot form still keeps [K, M] / [K, N] staging"
+                " plus transpose-at-call-site explicit\n"
+                "# - make TILE_K match the intended full-K width before treating this as runnable"
             )
         profile_comment = "# profile:\n#   kmkn\n#\n"
         profile_notes = (
-            "# - keep KMKN transpose-at-call-site semantics "
-            "explicit instead of burying them in layout comments\n"
-            "# - if the real kernel depends on alignment guards "
-            "or shape bindings, keep that coupling visible in "
-            "validation and the runnable stub"
+            "# - keep KMKN transpose-at-call-site semantics explicit"
+            " instead of burying them in layout comments\n"
+            "# - if the real kernel depends on alignment guards or shape bindings,"
+            " keep that coupling visible in validation and the runnable stub"
         )
         l1_buffer_decls = (
-            "    l1x = DBuff(DT.half, [TILE_K, TILE_M], "
-            "Position.L1)\n"
-            "    l1y = DBuff(DT.half, [TILE_K, TILE_N], "
-            "Position.L1)"
+            "    l1x = DBuff(DT.half, [TILE_K, TILE_M], Position.L1)\n"
+            "    l1y = DBuff(DT.half, [TILE_K, TILE_N], Position.L1)"
         )
     else:
         k_loop_block, tile_k_decl, k_loop_note = _cube_stage_block(
-            resolved_k_loop_mode, layout,
-            "l0c[tile_cnt][:valid_m, :valid_n]")
+            resolved_k_loop_mode, layout, "l0c[tile_cnt][:valid_m, :valid_n]",
+        )
         profile_comment = ""
-        profile_notes = "# - decide plain matmul / splitn / splitk explicitly instead of inheriting fake defaults"
+        profile_notes = (
+            "# - decide plain matmul / splitn / splitk explicitly instead of inheriting fake defaults"
+        )
         l1_buffer_decls = (
-            "    l1x = DBuff(DT.half, [TILE_M, TILE_K], "
-            "Position.L1)\n"
-            "    l1y = DBuff(DT.half, [TILE_N, TILE_K], "
-            "Position.L1)"
+            "    l1x = DBuff(DT.half, [TILE_M, TILE_K], Position.L1)\n"
+            "    l1y = DBuff(DT.half, [TILE_N, TILE_K], Position.L1)"
         )
 
     main_block = _main_stub(name, "cube-only", layout) if with_main else ""
@@ -603,38 +579,30 @@ def render_cube_vec(
     main_block = _main_stub(name, "cube->vec", layout) if with_main else ""
     resolved_profile = profile or "simple-post"
     if resolved_profile not in [
-        "simple-post", "half-row-post", "normalize-simple",
-        "normalize-two-pass", "dual-output",
+        "simple-post", "half-row-post", "normalize-simple", "normalize-two-pass", "dual-output",
     ]:
         raise ValueError(
-            "--topology cube->vec currently supports only "
-            "--profile simple-post|half-row-post|"
-            "normalize-simple|normalize-two-pass|dual-output"
+            "--topology cube->vec currently supports only"
+            " --profile simple-post|half-row-post|normalize-simple|normalize-two-pass|dual-output"
         )
     profile_comment = f"# profile:\n#   {resolved_profile}"
     extra_note = (
-        "# - vec postprocess ownership starts after the "
-        "FIX->V handoff; keep that lifetime separate from "
-        "the cube stage if needed"
+        "# - vec postprocess ownership starts after the FIX->V handoff;"
+        " keep that lifetime separate from the cube stage if needed"
     )
     k_loop_block, tile_k_decl, k_loop_note = _cube_stage_block(
-        resolved_k_loop_mode, layout,
-        "l0c[tile_cnt][:valid_m, :valid_n]",
-        extra_note=extra_note)
+        resolved_k_loop_mode, layout, "l0c[tile_cnt][:valid_m, :valid_n]", extra_note=extra_note,
+    )
 
     if resolved_profile == "simple-post":
         profile_notes = (
-            "# - this is the simple vec postprocess path; "
-            "use it for bias/add/abs/cast style post stages\n"
-            "# - keep vec-side ownership explicit instead of "
-            "assuming split-M half-row slicing by default"
+            "# - this is the simple vec postprocess path; use it for bias/add/abs/cast style post stages\n"
+            "# - keep vec-side ownership explicit instead of assuming split-M half-row slicing by default"
         )
         helper_block = _simple_postprocess_vf_stub()
         extra_buffers = (
-            "    mid_ub = DBuff(DT.float, [TILE_M, TILE_N], "
-            "Position.UB)\n"
-            "    out_ub = DBuff(DT.float, [TILE_M, TILE_N], "
-            "Position.UB)"
+            "    mid_ub = DBuff(DT.float, [TILE_M, TILE_N], Position.UB)\n"
+            "    out_ub = DBuff(DT.float, [TILE_M, TILE_N], Position.UB)"
         )
         postprocess_block = '''                cvmutex.lock()
 
@@ -658,10 +626,8 @@ def render_cube_vec(
         profile_notes = "# - this profile keeps the repository's common split-M half-row vec-side ownership explicit"
         helper_block = _simple_postprocess_vf_stub()
         extra_buffers = (
-            "    mid_ub = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)\n"
-            "    out_ub = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)"
+            "    mid_ub = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)\n"
+            "    out_ub = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)"
         )
         postprocess_block = '''                cvmutex.lock()
 
@@ -689,11 +655,9 @@ def render_cube_vec(
                     z[m0 + row_begin:m0 + row_end, n0:n0 + valid_n] <<= out_ub[tile_cnt][0:row_count, 0:valid_n]'''
     elif resolved_profile == "normalize-simple":
         profile_notes = (
-            "# - this profile uses row-sum scratch plus "
-            "immediate normalize placeholder in the same pass\n"
-            "# - if the real kernel needs temporary GM store "
-            "and a second pass, switch to normalize-two-pass "
-            "instead"
+            "# - this profile uses row-sum scratch plus immediate normalize placeholder in the same pass\n"
+            "# - if the real kernel needs temporary GM store and a second pass,"
+            " switch to normalize-two-pass instead"
         )
         helper_block = '''@vf()
 def accumulate_row_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows: Var):
@@ -710,12 +674,9 @@ def normalize_rows_with_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows
     # - keep exact zero / epsilon / tail policy explicit
     pass'''
         extra_buffers = (
-            "    xbuf = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)\n"
-            "    outbuf = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)\n"
-            "    row_sum_ub = Tensor(DT.float, [TILE_M // 2, 8],"
-            " Position.UB)"
+            "    xbuf = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)\n"
+            "    outbuf = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)\n"
+            "    row_sum_ub = Tensor(DT.float, [TILE_M // 2, 8], Position.UB)"
         )
         postprocess_block = '''                half_valid = CeilDiv(valid_m, 2)
                 sb_idx = Var(GetSubBlockIdx())
@@ -732,36 +693,24 @@ def normalize_rows_with_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows
 
                     # TODO:
                     # - zero row_sum scratch explicitly before accumulation when needed
-                    accumulate_row_sum_vf(xbuf[tile_cnt][0:row_count, :],
-                                          row_sum_ub[0:row_count, :],
-                                          outbuf[tile_cnt][0:row_count, :], row_count)
-                    normalize_rows_with_sum_vf(outbuf[tile_cnt][0:row_count, :],
-                                               row_sum_ub[0:row_count, :],
-                                               outbuf[tile_cnt][0:row_count, :], row_count)
+                    accumulate_row_sum_vf(xbuf[tile_cnt][0:row_count, :], row_sum_ub[0:row_count, :], outbuf[tile_cnt][0:row_count, :], row_count)
+                    normalize_rows_with_sum_vf(outbuf[tile_cnt][0:row_count, :], row_sum_ub[0:row_count, :], outbuf[tile_cnt][0:row_count, :], row_count)
 
                     z[m0 + row_begin:m0 + row_end, n0:n0 + valid_n] <<= outbuf[tile_cnt][0:row_count, 0:valid_n]
                     cvmutex.free()'''
     elif resolved_profile == "dual-output":
         profile_notes = (
-            "# - this profile keeps the cube result plus a "
-            "separate vec-side postprocess result\n"
-            "# - do not pretend the two outputs share identical "
-            "ownership or validation paths"
+            "# - this profile keeps the cube result plus a separate vec-side postprocess result\n"
+            "# - do not pretend the two outputs share identical ownership or validation paths"
         )
-        helper_block = _simple_postprocess_vf_stub("implement the exact vec-side postprocess for the secondary output")
+        helper_block = _simple_postprocess_vf_stub(
+            "implement the exact vec-side postprocess for the secondary output"
+        )
         extra_buffers = (
-            "    mid_ub = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)\n"
-            "    out_vec_ub = DBuff(DT.float, "
-            "[TILE_M // 2, TILE_N], Position.UB)"
+            "    mid_ub = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)\n"
+            "    out_vec_ub = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)"
         )
-        _cube_out = "out_cube[m0:m0 + valid_m, n0:n0 + valid_n]"
-        _l0c_slice = "l0c[tile_cnt][:valid_m, :valid_n]"
-        _vec_out = ("out_vec[m0 + row_begin:m0 + row_end,"
-                    " n0:n0 + valid_n]")
-        _vec_ub = ("out_vec_ub[tile_cnt]"
-                   "[0:row_count, 0:valid_n]")
-        postprocess_block = f'''                {_cube_out} <<= {_l0c_slice}
+        postprocess_block = '''                out_cube[m0:m0 + valid_m, n0:n0 + valid_n] <<= l0c[tile_cnt][:valid_m, :valid_n]
 
                 cvmutex.lock()
                 mid_ub[tile_cnt] <<= l0c[tile_cnt]
@@ -780,12 +729,12 @@ def normalize_rows_with_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows
                 if row_begin < valid_m:
                     row_end = Min(row_begin + half_valid, valid_m)
                     row_count = row_end - row_begin
-                    {_vec_out} <<= {_vec_ub}'''
+                    out_vec[m0 + row_begin:m0 + row_end, n0:n0 + valid_n] <<= out_vec_ub[tile_cnt][0:row_count, 0:valid_n]'''
     else:
         profile_notes = (
-            "# - this profile is explicitly two-pass: pass 1 "
-            "accumulates row sums and stores temporary tiles, "
-            "pass 2 normalizes and writes final output"
+            "# - this profile is explicitly two-pass:"
+            " pass 1 accumulates row sums and stores temporary tiles,"
+            " pass 2 normalizes and writes final output"
         )
         helper_block = '''@vf()
 def accumulate_row_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows: Var):
@@ -801,14 +750,10 @@ def normalize_rows_with_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows
     # - keep exact zero / epsilon / tail policy explicit
     pass'''
         extra_buffers = (
-            "    xbuf = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)\n"
-            "    outbuf = DBuff(DT.float, [TILE_M // 2, TILE_N],"
-            " Position.UB)\n"
-            "    row_sum_ub = Tensor(DT.float, [TILE_M // 2, 8],"
-            " Position.UB)\n"
-            "    pass1_cnt = Var(0)\n"
-            "    pass2_cnt = Var(0)"
+            "    xbuf = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)\n"
+            "    outbuf = DBuff(DT.float, [TILE_M // 2, TILE_N], Position.UB)\n"
+            "    row_sum_ub = Tensor(DT.float, [TILE_M // 2, 8], Position.UB)\n"
+            "    pass1_cnt = Var(0)\n    pass2_cnt = Var(0)"
         )
         postprocess_block = '''                half_valid = CeilDiv(valid_m, 2)
                 sb_idx = Var(GetSubBlockIdx())
@@ -823,10 +768,7 @@ def normalize_rows_with_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows
                     cvmutex.ready()
 
                     cvmutex.wait()
-                    accumulate_row_sum_vf(
-                        xbuf[pass1_cnt][0:row_count, :],
-                        row_sum_ub[0:row_count, :],
-                        outbuf[pass1_cnt][0:row_count, :], row_count)
+                    accumulate_row_sum_vf(xbuf[pass1_cnt][0:row_count, :], row_sum_ub[0:row_count, :], outbuf[pass1_cnt][0:row_count, :], row_count)
                     z[m0 + row_begin:m0 + row_end, n0:n0 + valid_n] <<= outbuf[pass1_cnt][0:row_count, 0:valid_n]
                     cvmutex.free()
                     pass1_cnt += 1'''
@@ -845,23 +787,17 @@ def normalize_rows_with_sum_vf(src: Tensor, row_sum: Tensor, dst: Tensor, n_rows
                 for nt in range(tile_n_begin, tile_n_end):
                     prev_n0 = Var(nt * TILE_N)
                     prev_valid_n = Min(TILE_N, N - prev_n0)
-                    xbuf[pass2_cnt][0:row_count, 0:prev_valid_n] <<= \\
-                        z[m0 + row_begin:m0 + row_end, prev_n0:prev_n0 + prev_valid_n]
-                    normalize_rows_with_sum_vf(
-                        xbuf[pass2_cnt][0:row_count, :],
-                        row_sum_ub[0:row_count, :],
-                        outbuf[pass2_cnt][0:row_count, :], row_count)
-                    z[m0 + row_begin:m0 + row_end, prev_n0:prev_n0 + prev_valid_n] <<= \\
-                        outbuf[pass2_cnt][0:row_count, 0:prev_valid_n]
+                    xbuf[pass2_cnt][0:row_count, 0:prev_valid_n] <<= z[m0 + row_begin:m0 + row_end, prev_n0:prev_n0 + prev_valid_n]
+                    normalize_rows_with_sum_vf(xbuf[pass2_cnt][0:row_count, :], row_sum_ub[0:row_count, :], outbuf[pass2_cnt][0:row_count, :], row_count)
+                    z[m0 + row_begin:m0 + row_end, prev_n0:prev_n0 + prev_valid_n] <<= outbuf[pass2_cnt][0:row_count, 0:prev_valid_n]
                     pass2_cnt += 1'''
 
     kernel_signature = f"def {name}_kernel(x: GMTensor, y: GMTensor, z: GMTensor, M: Var, N: Var, K: Var):"
     return_expr = "z"
     if resolved_profile == "dual-output":
         kernel_signature = (
-            f"def {name}_kernel(x: GMTensor, y: GMTensor, "
-            "out_cube: GMTensor, out_vec: GMTensor, "
-            "M: Var, N: Var, K: Var):"
+            f"def {name}_kernel("
+            f"x: GMTensor, y: GMTensor, out_cube: GMTensor, out_vec: GMTensor, M: Var, N: Var, K: Var):"
         )
         return_expr = "out_cube, out_vec"
         if with_main:
@@ -982,31 +918,22 @@ def render_vec_cube(
     if resolved_profile == "nz-publish":
         preprocess_helper_body = (
             "@vf()\n"
-            "def preprocess_pack_nz_vf("
-            "src_nd: Tensor, dst_nz: Tensor, "
-            "n_rows: Var):\n"
+            "def preprocess_pack_nz_vf(src_nd: Tensor, dst_nz: Tensor, n_rows: Var):\n"
             "    # TODO:\n"
-            "    # - implement the exact preprocess and "
-            "pack-to-NZ path\n"
-            "    # - examples: abs+sqrt+cast+pack, "
-            "scaling+cast+pack\n"
-            "    # - dst_nz is not a plain ND tensor "
-            "placeholder; treat it as packed publish source\n"
+            "    # - implement the exact preprocess and pack-to-NZ path\n"
+            "    # - examples: abs+sqrt+cast+pack, scaling+cast+pack\n"
+            "    # - dst_nz is not a plain ND tensor placeholder; treat it as packed publish source\n"
             "    pass"
         )
         ub_decl = (
-            "    x_nd_ub = DBuff(DT.half, [TILE_M, TILE_K],"
-            " Position.UB)\n"
-            "    x_nz_ub = DBuff(DT.half, [TILE_M, TILE_K],"
-            " Position.UB)"
+            "    x_nd_ub = DBuff(DT.half, [TILE_M, TILE_K], Position.UB)\n"
+            "    x_nz_ub = DBuff(DT.half, [TILE_M, TILE_K], Position.UB)"
         )
         pre_counter = "    vec_stage_cnt = Var(0)\n    x_publish_cnt = Var(0)"
         half_rows_decl = ""
         notes_extra = (
-            "# - preprocess output is organized for NZ-style "
-            "publish to L1\n"
-            "# - keep `.nz()` as the profile-defining publish "
-            "step unless the profile itself changes"
+            "# - preprocess output is organized for NZ-style publish to L1\n"
+            "# - keep `.nz()` as the profile-defining publish step unless the profile itself changes"
         )
         if resolved_k_loop_mode == "always":
             preprocess_block = '''            vcmutex.lock()
@@ -1033,10 +960,8 @@ def render_vec_cube(
             vcmutex.free()
             x_publish_cnt += 1'''
             k_loop_note = (
-                "# - vec preprocess and cube consume both use "
-                "a tiled K loop in this scaffold\n"
-                "# - vec stays outside nt but moves inside k0, "
-                "matching tiled-K ownership"
+                "# - vec preprocess and cube consume both use a tiled K loop in this scaffold\n"
+                "# - vec stays outside nt but moves inside k0, matching tiled-K ownership"
             )
         else:
             preprocess_block = '''            vcmutex.lock()
@@ -1059,26 +984,22 @@ def render_vec_cube(
             vcmutex.free()
             x_publish_cnt += 1'''
             k_loop_note = (
-                "# - this scaffold intentionally omits a K loop; "
-                "vec preprocess stays outside nt only because "
-                "K is one-shot in this profile"
+                "# - this scaffold intentionally omits a K loop;"
+                " vec preprocess stays outside nt only because K is one-shot in this profile"
             )
     elif resolved_profile == "half-row-pre":
         preprocess_helper_body = _simple_preprocess_vf_stub(
-            "this profile assumes split-M style subblock "
-            "ownership before L1 publish"
+            "this profile assumes split-M style subblock ownership before L1 publish"
         )
         ub_decl = (
-            "    x_ub = DBuff(DT.half, "
-            "[TILE_M // 2, TILE_K], Position.UB)\n"
-            "    x_proc_ub = DBuff(DT.half, "
-            "[TILE_M // 2, TILE_K], Position.UB)"
+            "    x_ub = DBuff(DT.half, [TILE_M // 2, TILE_K], Position.UB)\n"
+            "    x_proc_ub = DBuff(DT.half, [TILE_M // 2, TILE_K], Position.UB)"
         )
         pre_counter = "    pre_cnt = Var(0)\n    l1x_cnt = Var(0)\n    l1y_cnt = Var(0)"
         half_rows_decl = "    half_rows = Var(TILE_M // 2)"
         notes_extra = (
-            "# - this profile keeps the repository's common "
-            "split-M half-row preprocess/publish shape explicit"
+            "# - this profile keeps the repository's common split-M half-row"
+            " preprocess/publish shape explicit"
         )
         if resolved_k_loop_mode == "always":
             preprocess_block = '''            vcmutex.lock()
@@ -1110,11 +1031,9 @@ def render_vec_cube(
             vcmutex.free()
             l1x_cnt += 1'''
             k_loop_note = (
-                "# - vec preprocess and cube consume both use "
-                "a tiled K loop in this scaffold\n"
-                "# - half-row-pre keeps split-M subblock ownership "
-                "explicit while K tiles stream through the same "
-                "stage"
+                "# - vec preprocess and cube consume both use a tiled K loop in this scaffold\n"
+                "# - half-row-pre keeps split-M subblock ownership explicit"
+                " while K tiles stream through the same stage"
             )
         else:
             preprocess_block = '''            vcmutex.lock()
@@ -1142,24 +1061,21 @@ def render_vec_cube(
             vcmutex.free()
             l1x_cnt += 1'''
             k_loop_note = (
-                "# - this scaffold intentionally omits a K loop; "
-                "half-row-pre still keeps split-M subblock "
-                "ownership explicit in the one-shot publish path"
+                "# - this scaffold intentionally omits a K loop;"
+                " half-row-pre still keeps split-M subblock ownership explicit"
+                " in the one-shot publish path"
             )
     else:
         preprocess_helper_body = _simple_preprocess_vf_stub()
         ub_decl = (
-            "    x_ub = DBuff(DT.half, [TILE_M, TILE_K],"
-            " Position.UB)\n"
-            "    x_proc_ub = DBuff(DT.half, [TILE_M, TILE_K],"
-            " Position.UB)"
+            "    x_ub = DBuff(DT.half, [TILE_M, TILE_K], Position.UB)\n"
+            "    x_proc_ub = DBuff(DT.half, [TILE_M, TILE_K], Position.UB)"
         )
         pre_counter = "    pre_cnt = Var(0)\n    l1x_cnt = Var(0)\n    l1y_cnt = Var(0)"
         half_rows_decl = ""
         notes_extra = (
-            "# - this is the generic ND publish path; keep "
-            "ownership explicit instead of assuming split-M "
-            "subblock slicing"
+            "# - this is the generic ND publish path;"
+            " keep ownership explicit instead of assuming split-M subblock slicing"
         )
         if resolved_k_loop_mode == "always":
             preprocess_block = '''            vcmutex.lock()
@@ -1187,11 +1103,9 @@ def render_vec_cube(
             vcmutex.free()
             l1x_cnt += 1'''
             k_loop_note = (
-                "# - vec preprocess and cube consume both use "
-                "a tiled K loop in this scaffold\n"
-                "# - generic ND publish keeps the preprocess "
-                "tile whole unless the profile explicitly "
-                "changes ownership"
+                "# - vec preprocess and cube consume both use a tiled K loop in this scaffold\n"
+                "# - generic ND publish keeps the preprocess tile whole"
+                " unless the profile explicitly changes ownership"
             )
         else:
             preprocess_block = '''            vcmutex.lock()
@@ -1215,15 +1129,15 @@ def render_vec_cube(
             vcmutex.free()
             l1x_cnt += 1'''
             k_loop_note = (
-                "# - this scaffold intentionally omits a K loop; "
-                "generic ND publish keeps the preprocess tile whole "
-                "unless the profile explicitly changes ownership"
+                "# - this scaffold intentionally omits a K loop;"
+                " generic ND publish keeps the preprocess tile whole"
+                " unless the profile explicitly changes ownership"
             )
 
     tile_k_decl = (
-        "TILE_K = 128" if resolved_k_loop_mode == "always"
-        else "TILE_K = 128  # TODO: set this to the intended "
-             "one-shot K width or re-enable the K loop"
+        "TILE_K = 128"
+        if resolved_k_loop_mode == "always"
+        else "TILE_K = 128  # TODO: set this to the intended one-shot K width or re-enable the K loop"
     )
 
     return f'''from easyasc.a5 import *
@@ -1311,37 +1225,32 @@ def render_vec_cube_vec(
     resolved_profile = profile or "overlap-basic"
     if resolved_profile not in ["overlap-basic", "half-row-post", "delayed-post"]:
         raise ValueError(
-            "--topology vec->cube->vec currently supports only "
-            "--profile overlap-basic|half-row-post|delayed-post"
+            "--topology vec->cube->vec currently supports only"
+            " --profile overlap-basic|half-row-post|delayed-post"
         )
     profile_comment = f"# profile:\n#   {resolved_profile}"
 
     if resolved_profile == "delayed-post":
         delay_decl = "POST_DELAY_TILES = 2"
         cvmutex_decl = (
-            "    cvmutex = CvMutex(0, "
-            "depth=POST_DELAY_TILES + 1, "
-            "src_end_pipe=Pipe.FIX, dst_end_pipe=Pipe.V)"
+            "    cvmutex = CvMutex(0, depth=POST_DELAY_TILES + 1,"
+            " src_end_pipe=Pipe.FIX, dst_end_pipe=Pipe.V)"
         )
         loop_bound = "N + POST_DELAY_TILES * TILE_N"
         stage2_gate = "n0 >= POST_DELAY_TILES * TILE_N"
         prev_n0_expr = "Var(n0 - POST_DELAY_TILES * TILE_N)"
         stage2_depth_note = (
-            "# - if POST_DELAY_TILES changes, keep the "
-            "CvMutex depth and warmup/drain reasoning "
-            "aligned with it"
+            "# - if POST_DELAY_TILES changes,"
+            " keep the CvMutex depth and warmup/drain reasoning aligned with it"
         )
         pipeline_note = (
-            "# - this template keeps vec2 intentionally behind "
-            "stage1 by POST_DELAY_TILES tiles\n"
-            "# - when the delayed drain falls behind by more "
-            "than one tile, increase CvMutex depth with the "
-            "delay so cube can publish safely"
+            "# - this template keeps vec2 intentionally behind stage1 by POST_DELAY_TILES tiles\n"
+            "# - when the delayed drain falls behind by more than one tile,"
+            " increase CvMutex depth with the delay so cube can publish safely"
         )
         delay_note = (
-            "# - delayed-post uses a deeper cube -> vec queue "
-            "plus a longer warmup/drain period than the "
-            "one-tile overlap profile"
+            "# - delayed-post uses a deeper cube -> vec queue"
+            " plus a longer warmup/drain period than the one-tile overlap profile"
         )
     else:
         delay_decl = ""
@@ -1350,22 +1259,19 @@ def render_vec_cube_vec(
         stage2_gate = "n0 > 0"
         prev_n0_expr = "Var(n0 - TILE_N)"
         stage2_depth_note = (
-            "# - if this post stage ever lags by more than "
-            "one tile, increase CvMutex depth with the "
-            "extra delay"
+            "# - if this post stage ever lags by more than one tile,"
+            " increase CvMutex depth with the extra delay"
         )
         pipeline_note = (
-            "# - this template overlaps stage1 (vec1 + cube) "
-            "with stage2 (vec2) by shifting the postprocess "
-            "one tile later"
+            "# - this template overlaps stage1 (vec1 + cube) with stage2 (vec2)"
+            " by shifting the postprocess one tile later"
         )
         if resolved_profile == "half-row-post":
             delay_note = "# - half-row-post stays on the repository's default split-M handoff model for vec2 drain"
         else:
             delay_note = (
-                "# - overlap-basic keeps the default one-tile "
-                "delayed drain on the repository's split-M "
-                "handoff model"
+                "# - overlap-basic keeps the default one-tile delayed drain"
+                " on the repository's split-M handoff model"
             )
 
     if resolved_k_loop_mode == "always":
@@ -1387,8 +1293,7 @@ def render_vec_cube_vec(
                             # - if this is KMKN, switch slices before the vec stage
                             x_ub[stage1_cnt][0:rows_this, 0:valid_k] <<= x[m0 + row_start:m0 + row_end, k0:k0 + valid_k]
                             preprocess_vf(x_ub[stage1_cnt], x_proc_ub[stage1_cnt], vf_loops)
-                            l1x[stage1_cnt][row_start:row_end, k0:k0 + valid_k] <<=\\
-                                x_proc_ub[stage1_cnt][0:rows_this, 0:valid_k]
+                            l1x[stage1_cnt][row_start:row_end, k0:k0 + valid_k] <<= x_proc_ub[stage1_cnt][0:rows_this, 0:valid_k]
                     vcmutex.ready()
 
                     vcmutex.wait()
@@ -1408,8 +1313,8 @@ def render_vec_cube_vec(
         tile_k_decl = "TILE_K = 128"
         if resolved_profile == "delayed-post":
             k_loop_note = (
-                "# - stage1 (vec1 + cube) currently uses a tiled "
-                "K loop; vec2 drains after a longer delayed queue"
+                "# - stage1 (vec1 + cube) currently uses a tiled K loop;"
+                " vec2 drains after a longer delayed queue"
             )
         else:
             k_loop_note = "# - stage1 (vec1 + cube) currently uses a tiled K loop; stage2 drains one tile later"
@@ -1448,15 +1353,13 @@ def render_vec_cube_vec(
         tile_k_decl = "TILE_K = 128  # TODO: set this to the intended one-shot K width or re-enable the K loop"
         if resolved_profile == "delayed-post":
             k_loop_note = (
-                "# - this scaffold intentionally omits a K loop; "
-                "vec2 still drains through a deeper delayed queue "
-                "instead of a one-tile overlap"
+                "# - this scaffold intentionally omits a K loop;"
+                " vec2 still drains through a deeper delayed queue instead of a one-tile overlap"
             )
         else:
             k_loop_note = (
-                "# - this scaffold intentionally omits a K loop; "
-                "stage1 vec1/cube and stage2 vec2 stay aligned "
-                "by tile order instead"
+                "# - this scaffold intentionally omits a K loop;"
+                " stage1 vec1/cube and stage2 vec2 stay aligned by tile order instead"
             )
 
     stage2_block = f'''                if {stage2_gate}:
@@ -1475,8 +1378,7 @@ def render_vec_cube_vec(
                     if row_begin < valid_m:
                         row_end = Min(row_begin + half_rows, valid_m)
                         row_count = Var(row_end - row_begin)
-                        z[m0 + row_begin:m0 + row_end, prev_n0:prev_n0 + prev_valid_n] <<=\\
-                            out_ub[stage2_cnt][0:row_count, 0:prev_valid_n]
+                        z[m0 + row_begin:m0 + row_end, prev_n0:prev_n0 + prev_valid_n] <<= out_ub[stage2_cnt][0:row_count, 0:prev_valid_n]
 
                     cvmutex.free()
                     stage2_cnt += 1'''
@@ -1580,16 +1482,14 @@ def render_cube_vec_cube_vec(
     resolved_k_loop_mode = _resolve_k_loop_mode(k_loop_mode)
     if resolved_k_loop_mode != "never":
         raise ValueError(
-            "v1 currently supports --topology "
-            "cube->vec->cube->vec only with one-shot cube "
-            "stages; use --k-loop-mode never"
+            "v1 currently supports --topology cube->vec->cube->vec only with one-shot cube stages;"
+            " use --k-loop-mode never"
         )
 
     main_block = _cube_vec_cube_vec_main_stub(name) if with_main else ""
     profile_comment = f"# profile:\n#   {resolved_profile}"
     stage_layout_comment = (
-        "# layout:\n#   lhs1: [M, K1]\n"
-        "#   rhs1_stream: [T, S1, K1]\n"
+        "# layout:\n#   lhs1: [M, K1]\n#   rhs1_stream: [T, S1, K1]\n"
         "#   rhs2_stream: [T, N2, S1]\n#   out: [M, N2]"
     )
     notes_block = _lookahead_common_notes(
@@ -1598,20 +1498,13 @@ def render_cube_vec_cube_vec(
         [
             "# - finalize vec logic stays outside the streaming loop",
             "# - here `T` means streamed block count while `S1` is the stage1 output / stage2 reduction width",
-            ("# - `rhs2_stream` stores each stage2 rhs block "
-             "as `[N2, S1]` so stage2 can consume it directly "
-             "without inventing another transpose-side story "
-             "in the scaffold"),
-            ("# - this v1 scaffold assumes K1 <= TILE_K1, "
-             "S1 <= TILE_S1, and N2 <= TILE_N2 for one-shot "
-             "cube stages"),
-            ("# - if either cube stage needs tiled-K or wider "
-             "stage2 output tiling, add a dedicated profile "
-             "instead of stretching this one silently"),
-            ("# - stage2_in_ub is a plain half placeholder "
-             "in v1; if the real stage2 consume path needs "
-             "packed/NZ or another dtype, change the publish "
-             "path explicitly"),
+            "# - `rhs2_stream` stores each stage2 rhs block as `[N2, S1]`"
+            " so stage2 can consume it directly without inventing another transpose-side story in the scaffold",
+            "# - this v1 scaffold assumes K1 <= TILE_K1, S1 <= TILE_S1, and N2 <= TILE_N2 for one-shot cube stages",
+            "# - if either cube stage needs tiled-K or wider stage2 output tiling,"
+            " add a dedicated profile instead of stretching this one silently",
+            "# - stage2_in_ub is a plain half placeholder in v1;"
+            " if the real stage2 consume path needs packed/NZ or another dtype, change the publish path explicitly",
         ],
     )
 
@@ -1676,9 +1569,7 @@ def finalize_output_vf(accum_ub: Tensor, state_ub: Tensor, out_ub: Tensor, n_row
 
 
 @kernel()
-def {name}_kernel(lhs1: GMTensor, rhs1_stream: GMTensor,
-                  rhs2_stream: GMTensor, out: GMTensor,
-                  M: Var, T: Var, K1: Var, S1: Var, N2: Var):
+def {name}_kernel(lhs1: GMTensor, rhs1_stream: GMTensor, rhs2_stream: GMTensor, out: GMTensor, M: Var, T: Var, K1: Var, S1: Var, N2: Var):
     cv_stage1 = CvMutex(0, src_end_pipe=Pipe.FIX, dst_end_pipe=Pipe.V)
     vc_stage2_in = VcMutex(1, src_end_pipe=Pipe.MTE3, dst_end_pipe=Pipe.MTE1)
     cv_stage2 = CvMutex(2, src_end_pipe=Pipe.FIX, dst_end_pipe=Pipe.V)
@@ -1726,28 +1617,20 @@ def {name}_kernel(lhs1: GMTensor, rhs1_stream: GMTensor,
                 if t0 < T:
                     l1_lhs1[stage1_cnt][0:valid_m, 0:K1] <<= lhs1[m0:m0 + valid_m, 0:K1]
                     l1_rhs1[stage1_cnt][0:S1, 0:K1] <<= rhs1_stream[t0, 0:S1, 0:K1]
-                    matmul(l0c_stage1[stage1_cnt][:valid_m, :S1],
-                           l1_lhs1[stage1_cnt], l1_rhs1[stage1_cnt],
-                           m=valid_m, n=S1, k=K1)
+                    matmul(l0c_stage1[stage1_cnt][:valid_m, :S1], l1_lhs1[stage1_cnt], l1_rhs1[stage1_cnt], m=valid_m, n=S1, k=K1)
 
                     cv_stage1.lock()
                     cv_stage1.ready()
 
                     cv_stage1.wait()
                     if row_start < valid_m:
-                        stage1_ub[stage1_cnt][0:rows_this, 0:S1] <<=\\
-                            l0c_stage1[stage1_cnt][row_start:row_end, 0:S1]
-                        update_state_and_emit_stage2_input_vf(
-                            stage1_ub[stage1_cnt][0:rows_this, 0:S1],
-                            state_ub[0:rows_this, :],
-                            stage2_in_ub[stage1_cnt][0:rows_this, 0:S1],
-                            rows_this)
+                        stage1_ub[stage1_cnt][0:rows_this, 0:S1] <<= l0c_stage1[stage1_cnt][row_start:row_end, 0:S1]
+                        update_state_and_emit_stage2_input_vf(stage1_ub[stage1_cnt][0:rows_this, 0:S1], state_ub[0:rows_this, :], stage2_in_ub[stage1_cnt][0:rows_this, 0:S1], rows_this)
                     cv_stage1.free()
 
                     vc_stage2_in.lock()
                     if row_start < valid_m:
-                        l1_stage2_in[stage1_cnt][row_start:row_end, 0:S1] <<=\\
-                            stage2_in_ub[stage1_cnt][0:rows_this, 0:S1]
+                        l1_stage2_in[stage1_cnt][row_start:row_end, 0:S1] <<= stage2_in_ub[stage1_cnt][0:rows_this, 0:S1]
                     vc_stage2_in.ready()
 
                     stage1_cnt += 1
@@ -1757,10 +1640,7 @@ def {name}_kernel(lhs1: GMTensor, rhs1_stream: GMTensor,
 
                     vc_stage2_in.wait()
                     l1_rhs2[stage2_cnt][0:N2, 0:S1] <<= rhs2_stream[prev_t0, 0:N2, 0:S1]
-                    matmul(l0c_stage2[stage2_cnt][:valid_m, :N2],
-                           l1_stage2_in[stage2_cnt],
-                           l1_rhs2[stage2_cnt],
-                           m=valid_m, n=N2, k=S1)
+                    matmul(l0c_stage2[stage2_cnt][:valid_m, :N2], l1_stage2_in[stage2_cnt], l1_rhs2[stage2_cnt], m=valid_m, n=N2, k=S1)
                     vc_stage2_in.free()
 
                     cv_stage2.lock()
@@ -1769,19 +1649,13 @@ def {name}_kernel(lhs1: GMTensor, rhs1_stream: GMTensor,
                     cv_stage2.wait()
                     if row_start < valid_m:
                         stage2_out_ub[stage2_cnt][0:rows_this, 0:N2] <<= l0c_stage2[stage2_cnt][row_start:row_end, 0:N2]
-                        accumulate_stage2_output_vf(
-                            stage2_out_ub[stage2_cnt][0:rows_this, 0:N2],
-                            state_ub[0:rows_this, :],
-                            accum_ub[0:rows_this, 0:N2], rows_this)
+                        accumulate_stage2_output_vf(stage2_out_ub[stage2_cnt][0:rows_this, 0:N2], state_ub[0:rows_this, :], accum_ub[0:rows_this, 0:N2], rows_this)
                     cv_stage2.free()
 
                     stage2_cnt += 1
 
             if row_start < valid_m:
-                finalize_output_vf(
-                    accum_ub[0:rows_this, 0:N2],
-                    state_ub[0:rows_this, :],
-                    out_ub[0:rows_this, 0:N2], rows_this)
+                finalize_output_vf(accum_ub[0:rows_this, 0:N2], state_ub[0:rows_this, :], out_ub[0:rows_this, 0:N2], rows_this)
 
             bar_all()
             if row_start < valid_m:
@@ -1805,54 +1679,37 @@ def render_vec_cube_vec_cube(
     resolved_k_loop_mode = _resolve_k_loop_mode(k_loop_mode)
     if resolved_k_loop_mode != "never":
         raise ValueError(
-            "v1 currently supports --topology "
-            "vec->cube->vec->cube only with one-shot cube "
-            "stages; use --k-loop-mode never"
+            "v1 currently supports --topology vec->cube->vec->cube only with one-shot cube stages;"
+            " use --k-loop-mode never"
         )
 
     main_block = _vec_cube_vec_cube_main_stub(name) if with_main else ""
     profile_comment = f"# profile:\n#   {resolved_profile}"
     stage_layout_comment = (
-        "# layout:\n#   src_stream: [T, M, K1]\n"
-        "#   rhs1: [S1, K1]\n#   rhs2: [N2, S1]\n"
-        "#   out: [T, M, N2]"
+        "# layout:\n#   src_stream: [T, M, K1]\n#   rhs1: [S1, K1]\n"
+        "#   rhs2: [N2, S1]\n#   out: [T, M, N2]"
     )
     notes_block = _lookahead_common_notes(
         "# - this skeleton is for vec -> cube -> vec -> cube lookahead streaming pipelines",
         "# - use VcMutex for vec->cube publish and CvMutex for cube->vec ownership",
         [
-            ("# - this mirrored topology is currently inferred "
-             "from the repository's lookahead patterns rather "
-             "than lifted from one canonical kernel"),
-            ("# - here the running state is mainly for vec-side "
-             "transformation between the two cube stages, not "
-             "for a loop-external final epilogue"),
-            ("# - here `T` means streamed block count while "
-             "`S1` is the stage1 output / stage2 reduction "
-             "width"),
-            ("# - this v1 mirrored scaffold assumes a streamed "
-             "lhs plus fixed rhs1/rhs2 tiles; fork another "
-             "profile if both cube stages need streamed rhs "
-             "blocks"),
-            ("# - `rhs1` stores the first cube rhs as "
-             "`[S1, K1]` and `rhs2` stores the second cube "
-             "rhs as `[N2, S1]` so both cube stages can "
-             "consume direct tiles without inventing another "
-             "transpose-side story in the scaffold"),
-            ("# - this v1 scaffold assumes K1 <= TILE_K1, "
-             "S1 <= TILE_S1, and N2 <= TILE_N2 for one-shot "
-             "cube stages"),
-            ("# - if either cube stage needs tiled-K or wider "
-             "stage2 output tiling, add a dedicated profile "
-             "instead of stretching this one silently"),
-            ("# - output is emitted per streamed block as "
-             "`out[t, ...]`, not reduced across blocks into "
-             "one final `[M, N2]` tensor"),
-            ("# - the streamed vec UB staging and "
-             "`stage2_in_ub` are plain half/float placeholders "
-             "in v1; if a real consume path needs packed/NZ "
-             "or another dtype, change the publish path "
-             "explicitly"),
+            "# - this mirrored topology is currently inferred from the repository's lookahead patterns"
+            " rather than lifted from one canonical kernel",
+            "# - here the running state is mainly for vec-side transformation between the two cube stages,"
+            " not for a loop-external final epilogue",
+            "# - here `T` means streamed block count while `S1` is the stage1 output / stage2 reduction width",
+            "# - this v1 mirrored scaffold assumes a streamed lhs plus fixed rhs1/rhs2 tiles;"
+            " fork another profile if both cube stages need streamed rhs blocks",
+            "# - `rhs1` stores the first cube rhs as `[S1, K1]` and `rhs2` stores the second cube rhs as `[N2, S1]`"
+            " so both cube stages can consume direct tiles"
+            " without inventing another transpose-side story in the scaffold",
+            "# - this v1 scaffold assumes K1 <= TILE_K1, S1 <= TILE_S1, and N2 <= TILE_N2 for one-shot cube stages",
+            "# - if either cube stage needs tiled-K or wider stage2 output tiling,"
+            " add a dedicated profile instead of stretching this one silently",
+            "# - output is emitted per streamed block as `out[t, ...]`,"
+            " not reduced across blocks into one final `[M, N2]` tensor",
+            "# - the streamed vec UB staging and `stage2_in_ub` are plain half/float placeholders in v1;"
+            " if a real consume path needs packed/NZ or another dtype, change the publish path explicitly",
         ],
     )
 
@@ -1908,9 +1765,7 @@ def init_running_state_vf(state_ub: Tensor, n_rows: Var):
 
 
 @kernel()
-def {name}_kernel(src_stream: GMTensor, rhs1: GMTensor,
-                  rhs2: GMTensor, out: GMTensor,
-                  T: Var, M: Var, K1: Var, S1: Var, N2: Var):
+def {name}_kernel(src_stream: GMTensor, rhs1: GMTensor, rhs2: GMTensor, out: GMTensor, T: Var, M: Var, K1: Var, S1: Var, N2: Var):
     vc_stage1 = VcMutex(0, src_end_pipe=Pipe.MTE3, dst_end_pipe=Pipe.FIX)
     cv_stage1 = CvMutex(1, src_end_pipe=Pipe.FIX, dst_end_pipe=Pipe.V)
     vc_stage2 = VcMutex(2, src_end_pipe=Pipe.MTE3, dst_end_pipe=Pipe.FIX)
@@ -1957,20 +1812,13 @@ def {name}_kernel(src_stream: GMTensor, rhs1: GMTensor,
                     vc_stage1.lock()
                     if row_start < valid_m:
                         src_ub[stage1_cnt][0:rows_this, 0:K1] <<= src_stream[t0, m0 + row_start:m0 + row_end, 0:K1]
-                        preprocess_stream_input_vf(
-                            src_ub[stage1_cnt][0:rows_this, 0:K1],
-                            src_proc_ub[stage1_cnt][0:rows_this, 0:K1],
-                            rows_this)
-                        l1_stage1_in[stage1_cnt][row_start:row_end, 0:K1] <<=\\
-                            src_proc_ub[stage1_cnt][0:rows_this, 0:K1]
+                        preprocess_stream_input_vf(src_ub[stage1_cnt][0:rows_this, 0:K1], src_proc_ub[stage1_cnt][0:rows_this, 0:K1], rows_this)
+                        l1_stage1_in[stage1_cnt][row_start:row_end, 0:K1] <<= src_proc_ub[stage1_cnt][0:rows_this, 0:K1]
                     vc_stage1.ready()
 
                     vc_stage1.wait()
                     l1_rhs1[stage1_cnt][0:S1, 0:K1] <<= rhs1[0:S1, 0:K1]
-                    matmul(l0c_stage1[stage1_cnt][:valid_m, :S1],
-                           l1_stage1_in[stage1_cnt],
-                           l1_rhs1[stage1_cnt],
-                           m=valid_m, n=S1, k=K1)
+                    matmul(l0c_stage1[stage1_cnt][:valid_m, :S1], l1_stage1_in[stage1_cnt], l1_rhs1[stage1_cnt], m=valid_m, n=S1, k=K1)
                     vc_stage1.free()
 
                     cv_stage1.lock()
@@ -1978,19 +1826,13 @@ def {name}_kernel(src_stream: GMTensor, rhs1: GMTensor,
 
                     cv_stage1.wait()
                     if row_start < valid_m:
-                        stage1_ub[stage1_cnt][0:rows_this, 0:S1] <<=\\
-                            l0c_stage1[stage1_cnt][row_start:row_end, 0:S1]
-                        update_state_and_emit_stage2_input_vf(
-                            stage1_ub[stage1_cnt][0:rows_this, 0:S1],
-                            state_ub[0:rows_this, :],
-                            stage2_in_ub[stage1_cnt][0:rows_this, 0:S1],
-                            rows_this)
+                        stage1_ub[stage1_cnt][0:rows_this, 0:S1] <<= l0c_stage1[stage1_cnt][row_start:row_end, 0:S1]
+                        update_state_and_emit_stage2_input_vf(stage1_ub[stage1_cnt][0:rows_this, 0:S1], state_ub[0:rows_this, :], stage2_in_ub[stage1_cnt][0:rows_this, 0:S1], rows_this)
                     cv_stage1.free()
 
                     vc_stage2.lock()
                     if row_start < valid_m:
-                        l1_stage2_in[stage1_cnt][row_start:row_end, 0:S1] <<=\\
-                            stage2_in_ub[stage1_cnt][0:rows_this, 0:S1]
+                        l1_stage2_in[stage1_cnt][row_start:row_end, 0:S1] <<= stage2_in_ub[stage1_cnt][0:rows_this, 0:S1]
                     vc_stage2.ready()
 
                     stage1_cnt += 1
@@ -2000,10 +1842,7 @@ def {name}_kernel(src_stream: GMTensor, rhs1: GMTensor,
 
                     vc_stage2.wait()
                     l1_rhs2[stage2_cnt][0:N2, 0:S1] <<= rhs2[0:N2, 0:S1]
-                    matmul(l0c_stage2[stage2_cnt][:valid_m, :N2],
-                           l1_stage2_in[stage2_cnt],
-                           l1_rhs2[stage2_cnt],
-                           m=valid_m, n=N2, k=S1)
+                    matmul(l0c_stage2[stage2_cnt][:valid_m, :N2], l1_stage2_in[stage2_cnt], l1_rhs2[stage2_cnt], m=valid_m, n=N2, k=S1)
                     vc_stage2.free()
 
                     out[prev_t0, m0:m0 + valid_m, 0:N2] <<= l0c_stage2[stage2_cnt][:valid_m, :N2]
@@ -2013,66 +1852,67 @@ def {name}_kernel(src_stream: GMTensor, rhs1: GMTensor,
 
 
 def render_skeleton(
-    name: str, topology: str, formula: str, layout: str,
-    grid_mode: str, m_split: Optional[int],
-    n_split: Optional[int], profile: str,
-    k_loop_mode: str, with_main: bool,
+    name: str, topology: str, formula: str, layout: str, grid_mode: str,
+    m_split: Optional[int], n_split: Optional[int],
+    profile: str, k_loop_mode: str, with_main: bool,
 ) -> str:
     if topology == "cube-only":
-        return render_cube_only(name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main)
+        return render_cube_only(
+            name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main,
+        )
     if topology == "cube->vec":
-        return render_cube_vec(name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main)
+        return render_cube_vec(
+            name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main,
+        )
     if topology == "vec->cube":
         return render_vec_cube(name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main)
     if topology == "vec->cube->vec":
-        return render_vec_cube_vec(name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main)
+        return render_vec_cube_vec(
+            name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main,
+        )
     if topology == "cube->vec->cube->vec":
         return render_cube_vec_cube_vec(
-            name, formula, layout, grid_mode, m_split,
-            n_split, profile, k_loop_mode, with_main)
+            name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main,
+        )
     if topology == "vec->cube->vec->cube":
         return render_vec_cube_vec_cube(
-            name, formula, layout, grid_mode, m_split,
-            n_split, profile, k_loop_mode, with_main)
+            name, formula, layout, grid_mode, m_split, n_split, profile, k_loop_mode, with_main,
+        )
     raise ValueError(
-        "v1 currently supports only --topology "
-        "cube-only|cube->vec|vec->cube|vec->cube->vec|"
-        "cube->vec->cube->vec|vec->cube->vec->cube"
+        "v1 currently supports only --topology"
+        " cube-only|cube->vec|vec->cube|vec->cube->vec|cube->vec->cube->vec|vec->cube->vec->cube"
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate repository-style kernel skeletons.")
-    parser.add_argument("--name", required=True, help="Kernel basename or filename under agent/example/kernels/.")
+    parser.add_argument("--name", required=True, help="Kernel basename or filename under kernels/.")
     parser.add_argument(
         "--topology", required=True,
-        choices=["cube-only", "cube->vec", "vec->cube",
-                 "vec->cube->vec", "cube->vec->cube->vec",
-                 "vec->cube->vec->cube"],
-        help="Supported topology class.")
+        choices=["cube-only", "cube->vec", "vec->cube", "vec->cube->vec",
+                 "cube->vec->cube->vec", "vec->cube->vec->cube"],
+        help="Supported topology class.",
+    )
     parser.add_argument(
-        "--grid-mode", default="tile-m",
-        choices=["tile-m", "tile-n", "mix"],
-        help="Tile-grid ownership mode for the generated "
-             "skeleton.")
+        "--grid-mode", default="tile-m", choices=["tile-m", "tile-n", "mix"],
+        help="Tile-grid ownership mode for the generated skeleton.",
+    )
     parser.add_argument("--m-split", type=int, help="Required with --grid-mode mix.")
     parser.add_argument("--n-split", type=int, help="Required with --grid-mode mix.")
     parser.add_argument("--formula", default="", help="Optional formula text to place in the file header.")
     parser.add_argument(
-        "--layout", default="mknk",
-        choices=["mknk", "kmkn", "custom"],
-        help="Layout hint for comments and __main__ "
-             "reference stub.")
+        "--layout", default="mknk", choices=["mknk", "kmkn", "custom"],
+        help="Layout hint for comments and __main__ reference stub.",
+    )
     parser.add_argument("--profile", default="", help="Optional topology-specific profile name.")
     parser.add_argument(
-        "--k-loop-mode", default="auto",
-        choices=["auto", "always", "never"],
-        help="Whether to scaffold a tiled K loop or a "
-             "single-shot cube call.")
+        "--k-loop-mode", default="auto", choices=["auto", "always", "never"],
+        help="Whether to scaffold a tiled K loop or a single-shot cube call.",
+    )
     parser.add_argument(
         "--print", action="store_true", dest="print_only",
-        help="Print the generated skeleton instead of "
-             "writing a file.")
+        help="Print the generated skeleton instead of writing a file.",
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite the target file if it already exists.")
     parser.add_argument("--no-main", action="store_true", help="Skip generating the __main__ runnable stub.")
     return parser

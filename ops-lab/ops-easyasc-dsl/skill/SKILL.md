@@ -1,63 +1,62 @@
 ---
 name: ops-easyasc-dsl
-description: Use this skill when working in the ops-easyasc-dsl repository to drive the easyasc DSL to AscendC workflow under agent/. Restore archived runtime, docs, and examples with agent/scripts/init.sh before tasks that need easyasc/, doc/, doc_cn/, or agent/example/, then route through agent/ROUTER.md for progressive disclosure.
+description: easyasc DSL to AscendC workflow. Author, debug, and validate Ascend NPU kernels written in the easyasc Python DSL, then lower them to AscendC runtime.
 ---
 
 # ops-easyasc-dsl
 
-## First Step
+This is the user-facing entrypoint for the easyasc DSL to AscendC skill. The reusable workflow itself lives under `agent/`; this file only points you at it.
 
-If `easyasc/`, `doc/`, `doc_cn/`, or `agent/example/` are missing from the repository, run:
+## Before you read the archived runtime/docs or examples
+
+Parts of this repository ship as archives to keep the delivered skill bundle small.
+
+Run the initialization script once before reading runtime/doc content or running examples:
 
 ```bash
 bash agent/scripts/init.sh
 ```
 
-Use that before:
+`agent/scripts/init.sh` restores:
 
-- importing `easyasc.a5` or `easyasc.a2`
-- reading `doc/` or `doc_cn/`
-- running examples under `agent/example/`
-- using workflow helpers that inspect example kernels
+- `easyasc/` — the DSL Python package and codegen runtime
+- `doc/` and `doc_cn/` — long-form English and Chinese documentation
+- `agent/example/` — curated kernel examples and manual demo programs
 
-## Workflow Location
+The script is idempotent; only missing trees are restored. Archives live under `agent/assets/`:
 
-The callable easyasc DSL to AscendC workflow lives under `agent/`.
+- `agent/assets/ops-easyasc-dsl-runtime.tar.gz` — the `easyasc/`, `doc/`, and `doc_cn/` payload
+- `agent/assets/ops-easyasc-dsl-example.tar.gz` — the `agent/example/` payload
 
-After initialization, use:
+## Where to go next
 
-- `agent/ROUTER.md` for the first routing pass
-- `agent/playbooks/` for short workflow guidance
-- `agent/references/` for focused constraints, patterns, and repo maps
-- `agent/index/` for machine-readable example lookup
-- `agent/scripts/` for workflow utilities and repository maintenance
+Start with the router:
 
-## Progressive Disclosure
+- `agent/ROUTER.md` — progressive-disclosure routing layer
 
-Prefer this read order:
+Preferred read order:
 
-1. `agent/ROUTER.md`
-2. one playbook under `agent/playbooks/`
-3. one focused file under `agent/references/`
-4. one concrete source file under `agent/example/kernels/` or `agent/example/demo/`
+1. `agent/ROUTER.md` — pick the matching route
+2. one playbook from `agent/playbooks/`
+3. one focused reference from `agent/references/`
+4. one source example from `agent/example/kernels/` (after `init.sh`)
 
-Do not load the whole repository summary when a smaller route answers the task.
+## Top-level layout
 
-## Key Working Areas
+- `skill/` — this skill entrypoint
+- `agent/` — the callable easyasc DSL to AscendC workflow used by this skill
+  - `agent/scripts/` — repository-maintenance scripts, including `init.sh`
+  - `agent/assets/` — archived runtime/docs and example payloads
+  - `agent/example/` — restored kernel examples and manual demos (on-demand)
 
-- Skill entrypoint: `skill/`
-- Workflow router and references: `agent/`
-- Kernel examples: `agent/example/kernels/`
-- Manual demos: `agent/example/demo/`
-- Repository scripts: `agent/scripts/`
-- Script reference summary: `agent/scripts/tools_summary.md`
-- Archived runtime/docs payload: `agent/assets/ops-easyasc-dsl-runtime.tar.gz`
-- Archived example payload: `agent/assets/ops-easyasc-dsl-example.tar.gz`
+## Environment guidance
 
-## Local Environment Hints
+The delivered scripts prefer environment variables over fixed install paths. Set them to match your CANN installation, for example:
 
-- preferred local Python environment: any environment that already has the dependencies you need; `torch210npu` is only an example
-- CANN install root: use your local toolkit path via `ASCEND_HOME_PATH`; do not assume a fixed machine-specific directory
-- common validation command: `python agent/example/kernels/a5/matmul_float_mmad.py`
+```bash
+export ASCEND_HOME_PATH=/path/to/your/cann/install
+# optional conda env name (example only, not required)
+# conda activate torch210npu
+```
 
-That kernel should validate both `OpExec(..., simulator=True)` and `OpExec(..., simulator=False)`.
+Avoid hardcoding machine-specific absolute paths when editing delivered scripts.

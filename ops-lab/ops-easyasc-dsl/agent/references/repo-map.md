@@ -1,130 +1,84 @@
 # Repository Map
 
 Use this file when the question is about where something lives in the repository.
-Do not use it as a replacement for kernel-authoring or debugging guidance.
+Workflow routing lives in `agent/ROUTER.md`; this file is not a second task router.
 
-## Top-Level Areas
+## Top-level areas
 
 - `skill/`
-  - repository skill entrypoint that calls into the workflow under `agent/`
-- `easyasc/`
-  - core DSL, parser/codegen, simulator, runtime models, and public API surface
-  - restored on demand by `agent/scripts/init.sh`
-- `agent/example/kernels/`
-  - curated kernel examples plus legacy kernel summaries/tricks
-  - restored on demand by `agent/scripts/init.sh`
-- `historical automated tests/` (removed from this skill bundle)
-  - automated pytest coverage plus reusable fixtures under `historical testcases/fixtures/` (removed from this skill bundle)
-- `agent/scripts/`
-  - small standalone utility scripts
-- `doc/`
-  - English project and API documentation
-  - restored on demand by `agent/scripts/init.sh`
-- `doc_cn/`
-  - Chinese mirror of the documentation set
-  - restored on demand by `agent/scripts/init.sh`
+  - skill entrypoint (`skill/SKILL.md`); the only file the skill surface is supposed to expose directly
 - `agent/`
-  - easyasc DSL to AscendC workflow, including the router-first guidance layer, focused references, machine-readable catalogs, scripts, assets, and archived examples
-- `agent/example/demo/`
-  - manual runners and compile/integration demos grouped by device family
-  - restored on demand by `agent/scripts/init.sh`
-  - `agent/example/demo/a2/` holds a2-specific runnable samples
-  - `agent/example/demo/a5/` holds a5/general runnable samples
-  - negative-case repros currently live under `agent/example/demo/a5/negative_cases/`
+  - the reusable easyasc DSL to AscendC workflow used by the skill
+  - router-first guidance, focused references, playbooks, scripts, archived payloads, and examples
 - `README.md`, `README_CN.md`
   - top-level project and documentation entry points
-- `SIMULATOR_V2_DESIGN.md`, `SIMULATOR_V2_TODO.md`, `SIMULATOR_V2_INSTRUCTION_TODO.md`
-  - root-level planning docs for the V2 simulator architecture, phased rollout, and legacy instruction porting backlog
-- `AGENTS.md`
+- `AGENTS.md`, `CLAUDE.md`
   - repository-local working rules for agent-style contributors
 
-## `agent/` Layout
+Restored on demand by `agent/scripts/init.sh`:
+
+- `easyasc/`
+  - core DSL, parser/codegen, simulator, runtime models, and public API surface
+- `doc/`
+  - English project and API documentation
+- `doc_cn/`
+  - Chinese mirror of the documentation set
+- `agent/example/kernels/`
+  - curated kernel examples, reference kernels, and runnable validation stories
+- `agent/example/demo/`
+  - manual runners and compile/integration demos grouped by device family
+
+Removed from the delivered skill bundle:
+
+- `testcases/`
+  - no longer part of the delivered tree; references to it elsewhere describe historical layout only
+
+## `agent/` layout
 
 - `agent/ROUTER.md`
   - first task router
 - `agent/scripts/`
-  - workflow utilities, repository maintenance, and initialization helpers
+  - repository-maintenance scripts, including `init.sh` that restores archived trees
 - `agent/assets/`
-  - archived runtime/docs and archived examples restored by `agent/scripts/init.sh`
+  - archived payloads (`ops-easyasc-dsl-runtime.tar.gz`, `ops-easyasc-dsl-example.tar.gz`)
 - `agent/playbooks/`
   - short workflow guides for common tasks
+- `agent/references/contract-intake.md`
+  - intake rules when `clarify-first.md` needs to extract a contract from a reference file
+- `agent/references/facts.md`
+  - quick chooser for factual lookups
+- `agent/references/facts-*.md`
+  - focused fact sheets for device/runtime values, authoring rules, and simulator/`OpExec` gotchas
 - `agent/references/constraints/`
-  - detailed invariants and repository-specific rules
-  - includes vec mask semantics in `agent/references/constraints/mask.md`
-  - includes a2-specific device constraints in `agent/references/constraints/a2-device.md`
-  - includes vec stride/slicing rules in `agent/references/constraints/vec-stride.md`
-  - includes a2 vec reduction pattern in `agent/references/constraints/vec-reduction-a2.md`
+  - topic-focused invariants such as tiling, autosync, counters, precision, tails, and device-specific limits
 - `agent/references/patterns/`
-  - common pipeline topologies and shape patterns
-  - includes a2-specific mixed-pipeline routes such as `a2-cube-vec.md`, `a2-cube-vec-cube.md`, `a2-cube-vec-cube-vec.md`, and `a2-cube-vec-cube-vec-softmax.md`
+  - topology-specific pipeline patterns, especially the a2 mixed-pipeline routes
 - `agent/references/examples/`
-  - human-readable kernel/tool catalogs
+  - human-readable kernel and tool catalogs, plus optional deep notes for a few complex kernels
+- `agent/references/code-paths.md`
+  - implementation-path lookup guide when the issue is in lowering or runtime behavior
 - `agent/references/repo-map.md`
   - this file
-- `agent/references/code-paths.md`
-  - common implementation-path lookup guide
+- `agent/references/simulator-v2.md`
+  - focused simulator runtime and bridge map
 - `agent/index/`
-  - generated machine-readable catalogs from the example markdown files
+  - generated machine-readable catalogs derived from the example markdown files
+- `agent/example/`
+  - restored kernel examples (`agent/example/kernels/`) and manual demos (`agent/example/demo/`)
 
-## Where To Look By Question
-
-### I need to write a kernel
-- start: `agent/playbooks/kernel-authoring.md`
-- then: `agent/references/constraints/`
-- then: `agent/references/patterns/`
-- then: `agent/references/examples/kernel-catalog.md`
-- only after that: `agent/example/kernels/` source files
-
-### I need to debug a kernel
-- start: `agent/playbooks/kernel-debugging.md`
-- then: matching file under `agent/references/constraints/`
-- then: `agent/references/code-paths.md`
-- then: parser/simulator/source files
-
-### I need a concrete example kernel or tool
-- start: `agent/references/examples/kernel-catalog.md`
-- start: `agent/references/examples/tool-catalog.md`
-- machine-readable fallback: `agent/index/kernels.json`, `agent/index/tools.json`
-
-### I need repo structure or ownership
-- start: `agent/references/repo-map.md`
-- deeper fallback: `doc/11_architecture_for_contributors.md`
-
-### I need to know which code path implements an operation
-- start: `agent/references/code-paths.md`
-- deeper fallback: `doc/11_architecture_for_contributors.md`
-
-### I need to understand test coverage layout or fixtures
-- start: `historical testcases/README.md` (removed from this skill bundle)
-- then: relevant tests under `historical automated tests/` (removed from this skill bundle)
-
-### I need a manual runnable example or compile demo
-- start: `agent/example/demo/`
-- then pick the device bucket under `agent/example/demo/a2/` or `agent/example/demo/a5/`
-- for intentionally failing repros: `agent/example/demo/a5/negative_cases/`
-
-### I need to modify docs
-- start: `agent/playbooks/doc-authoring.md`
-- then: `README.md`, `README_CN.md`, `doc/`, `doc_cn/`
-
-### I need to modify a tool
-- start: `agent/playbooks/tool-authoring.md`
-- then: `agent/references/examples/tool-catalog.md`
-- then: `agent/scripts/`
-
-## Owner Files
+## Owner files
 
 Use the smallest owner file that answers the question:
 
-- contributor-level architecture and subsystem ownership -> `doc/11_architecture_for_contributors.md`
+- repository layout and area ownership -> `agent/references/repo-map.md`
 - implementation-path lookup -> `agent/references/code-paths.md`
-- kernel examples and heuristics -> `agent/references/examples/kernel-catalog.md`
+- contributor-facing architecture fallback -> `doc/11_architecture_for_contributors.md`
+- kernel example metadata -> `agent/references/examples/kernel-index.md` and `agent/references/examples/kernel-catalog.md`
 - tool summaries -> `agent/scripts/tools_summary.md`
-- test-suite organization -> `historical testcases/README.md` (removed from this skill bundle)
 
-## Legacy Files
+## Reading rule
 
-These files still exist, but they are no longer the default first read:
-- `agent/scripts/tools_summary.md`
-
-Use them only when the smaller router-first layers are not enough.
+- use `agent/ROUTER.md` for workflow questions
+- use this file for layout and ownership questions
+- if archived content (`easyasc/`, `doc/`, `doc_cn/`, `agent/example/`) is missing, run `bash agent/scripts/init.sh`
+- open source files only after the map is no longer enough

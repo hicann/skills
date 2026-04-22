@@ -1,145 +1,35 @@
 # Agent Router
 
-Use this file as the first routing layer for repository knowledge.
-Do not treat it as a giant summary.
-Its only job is to send the reader to the smallest useful next file.
-
-Before following routes that need archived runtime, docs, or examples, run:
-- `bash agent/scripts/init.sh`
+First routing layer. Pick one route; each route names ONE starting file. The starting file (usually a playbook or the facts router) then points at the smaller files you actually need. Do not preload every drill-down listed — read only what the starting file tells you to, and stop once that file or the focused fact page it points to already answered your question.
 
 ## Primary Routes
 
-### 1. Write a new kernel
-Start with:
-- `agent/playbooks/kernel-authoring.md`
-
-Then drill down only if needed:
-- tile and split decisions -> `agent/references/constraints/tiling.md`
-- sync and event reasoning -> `agent/references/constraints/autosync.md`
-- counter ownership -> `agent/references/constraints/counters.md`
-- precision boundaries -> `agent/references/constraints/precision.md`
-- datamove recipes -> `agent/references/constraints/datamove.md`
-- vec reduction idioms -> `agent/references/constraints/reduction.md`
-- normalized online softmax `S2` tails -> `agent/references/constraints/online-softmax-tail.md`
-- pure a2 vec-only kernels -> `agent/references/constraints/a2-vec-kernel.md`
-- topology-specific shape -> `agent/references/patterns/`
-
-If the target device is a2 (b3), additionally read:
-- `agent/references/constraints/a2-device.md`
-- `agent/references/patterns/a2-cube-vec.md` (for cube -> vec topology)
-- `agent/references/patterns/a2-cube-vec-cube.md` (for cube -> vec -> cube with delayed consumer)
-- `agent/references/patterns/a2-cube-vec-cube-vec.md` (for cube -> vec -> cube -> vec with delayed numerator accumulation)
-- `agent/references/patterns/a2-cube-vec-cube-vec-softmax.md` (for normalized online softmax with running sum and final divide)
-- `agent/references/constraints/vec-reduction-a2.md` (for row-wise reductions)
-- `agent/references/constraints/vec-stride.md` (for continuous vs sliced vec ops)
-
-Fallback:
-- `agent/references/code-paths.md`
-- `doc/11_architecture_for_contributors.md`
-
-### 2. Debug an existing kernel
-Start with:
-- `agent/playbooks/kernel-debugging.md`
-
-If the issue is very specific, then drill down into the matching detailed reference.
-Typical topics include:
-- autosync -> `agent/references/constraints/autosync.md`
-- tiling -> `agent/references/constraints/tiling.md`
-- counters and buffering -> `agent/references/constraints/counters.md`
-- precision and cast boundaries -> `agent/references/constraints/precision.md`
-- tail handling -> `agent/references/constraints/tail-safety.md`
-- normalized online softmax tails -> `agent/references/constraints/online-softmax-tail.md`
-- datamove issues -> `agent/references/constraints/datamove.md`
-- reduction bugs -> `agent/references/constraints/reduction.md`
-- V2 simulator sync timeout or float8 issues -> see "V2 simulator" sections in `agent/playbooks/kernel-debugging.md`
-
-Fallback:
-- `agent/references/code-paths.md`
-- `doc/11_architecture_for_contributors.md`
-
-### 3. Find a reference example
-Start with:
-- kernel examples -> `agent/references/examples/kernel-catalog.md`
-- tool examples -> `agent/references/examples/tool-catalog.md`
-
-If machine-readable lookup helps, use:
-- `agent/index/kernels.json`
-- `agent/index/tools.json`
-
-Fallback only when the new catalog still lacks the case you need:
-- `agent/scripts/tools_summary.md`
-- `agent/example/kernels/`
-- `agent/scripts/`
-
-### 4. Modify or add a repository tool
-Start with:
-- `agent/playbooks/tool-authoring.md`
-
-Then drill down only if needed:
-- tool selection / intended outputs -> `agent/references/examples/tool-catalog.md`
-- machine-readable tool metadata -> `agent/index/tools.json`
-- implementation summary / CLI examples -> `agent/scripts/tools_summary.md`
-
-Fallback while the new playbook is still incomplete:
-- `agent/scripts/tools_summary.md`
-- `agent/references/code-paths.md`
-- `doc/11_architecture_for_contributors.md`
-
-### 5. Modify or extend repository documentation
-Start with:
-- `agent/playbooks/doc-authoring.md`
-
-Fallback while the new playbook is still incomplete:
-- `README.md`
-- `README_CN.md`
-- `doc/`
-- `doc_cn/`
-- `doc/11_architecture_for_contributors.md`
-
-### 6. Understand repository structure
-Start with:
-- `agent/references/repo-map.md`
-
-If you need deeper architecture detail after that:
-- `doc/11_architecture_for_contributors.md`
-
-### 7. Find the implementation path for a behavior or operation
-Start with:
-- `agent/references/code-paths.md`
-
-If the smaller map is not enough:
-- `doc/11_architecture_for_contributors.md`
-- relevant source/test files
-
-## Reference Layers
-
-When a playbook is not enough, read only the specific detailed reference you need.
-Detailed reference areas now available:
-- `agent/references/constraints/tiling.md`
-- `agent/references/constraints/autosync.md`
-- `agent/references/constraints/counters.md`
-- `agent/references/constraints/precision.md`
-- `agent/references/constraints/tail-safety.md`
-- `agent/references/constraints/online-softmax-tail.md`
-- `agent/references/constraints/datamove.md`
-- `agent/references/constraints/reduction.md`
-- `agent/references/constraints/a2-device.md`
-- `agent/references/constraints/a2-vec-kernel.md`
-- `agent/references/constraints/vec-stride.md`
-- `agent/references/constraints/vec-reduction-a2.md`
-- `agent/references/patterns/`
-- `agent/references/examples/`
-- `agent/references/repo-map.md`
-- `agent/references/code-paths.md`
-- `agent/index/kernels.json`
-- `agent/index/tools.json`
+| Task | Start here | Then (only if needed) |
+|------|-----------|-----------------------|
+| **Quick fact / value look-up** (device caps, pipe pairs, mutex signatures, hard rules, simulator gotchas) | `agent/references/facts.md` (quick chooser) | one focused facts page; then `agent/references/constraints/<topic>.md` for the *why* |
+| **Write a new kernel** | `agent/playbooks/clarify-first.md` (mandatory Step 0) → `agent/playbooks/kernel-authoring.md` (tool-first fast path) | one focused facts / constraint / pattern file named by the playbook |
+| **Debug an existing kernel** | `agent/playbooks/kernel-debugging.md` (match the Symptom-to-check map first) | one focused facts page; then the constraint file named by the playbook section |
+| **Find an example kernel** | `agent/scripts/select_kernel_example.py` or `agent/references/examples/kernel-index.md` (filter to ≤3 candidates) | `agent/references/examples/kernel-catalog.md` (read ONLY the matching `###` entry) → source file |
+| **Practice problems (write-from-scratch)** | `agent/references/examples/kernel-practice.md` | — |
+| **Modify or add a tool** | `agent/playbooks/tool-authoring.md` | `agent/references/examples/tool-catalog.md` |
+| **Modify or extend docs** | `agent/playbooks/doc-authoring.md` | `README.md`, `README_CN.md`, `doc/`, `doc_cn/` |
+| **Repo structure question** | `agent/references/repo-map.md` | `doc/11_architecture_for_contributors.md` |
+| **Which code path implements X?** | `agent/references/code-paths.md` | `agent/references/simulator-v2.md` for sim-specific paths; then source/tests |
 
 ## Reading Rule
 
-Prefer this order:
-1. router
-2. one playbook
-3. one focused reference
-4. one example catalog entry or source file
+1. `facts.md` is the chooser for quick factual questions — jump from there to one focused facts page, not all of them.
+2. For authoring/debugging, read one playbook and let it pick which constraint / pattern / example files you actually need. Do not preload the full list.
+3. For examples, prefer the selector tool first; otherwise filter with the index, then open only the one catalog entry that matches.
+4. Open source files only when the guidance layers stop being enough.
+5. `Files to study` / `Fallback references` lists at the bottom of a constraint or pattern file are depth pointers, NOT mandatory follow-ups. If the file you are in already answered your question, stop. In particular, do not bounce back through the facts router once you already reached the focused facts page that owns the value you needed.
 
-Do not load every legacy summary by default if a smaller route already answers the task.
+## Machine-readable fallbacks
+
+- `agent/index/kernels.json`, `agent/index/tools.json` — for programmatic selection tools only; agents should prefer the markdown catalogs.
+
+## Deeper references (addressed by the starting files above)
+
+- `agent/references/constraints/` — topic-focused constraint files (tiling, autosync, counters, precision, tail-safety, online-softmax-tail, datamove, reduction, mask, vec-stride, a2-device, a5-device, a2-vec-kernel, vec-reduction-a2)
+- `agent/references/patterns/` — topology-specific pipeline shapes (a2-* and generic cube/vec combinations)
+- `agent/references/simulator-v2.md` — V2 runtime and bridge map

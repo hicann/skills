@@ -57,97 +57,36 @@ Concrete example: for `x @ y.t() + 1.0`, both `256x128x256` and `128x256x256` ma
 
 ## 4. Device-specific capacity and core count
 
-Buffer budgets and core count differ between a2 and a5. Check the target device before choosing tile sizes.
+Buffer budgets and core count differ between a2 and a5. For exact values, see `agent/references/facts-device-runtime.md`. For `splitk` / `splitn` element count and byte-budget formulas, see `agent/references/facts-authoring.md`.
 
-| Resource | a2 (`b3`) | a5 (`950`) |
-|----------|-----------|------------|
-| Cube core count | **20** | **32** |
-| L0A | 64 KB | 64 KB |
-| L0B | 64 KB | 64 KB |
-| **L0C** | **128 KB** | **256 KB** |
-| **UB** | **192 KB** | **256 KB** |
-| L1 | 512 KB | 512 KB |
-
-Source: `easyasc/globvars.py` (defaults) and `easyasc/a5.py` (overrides). Core counts are in `easyasc/simulator/shared/runtime_helpers.py`.
-
-Key consequences:
+Consequences that matter for tile strategy:
 - a5 tile strategies that fit `DBuff L0C` (e.g. `TILE_M=128, TILE_N=256 → 128*256*4*2 = 256 KB`) will **overflow on a2** (`128 KB`).
-- a5 core split with `GetCubeNum()=32` becomes `20` on a2; verify load balance for the smaller core count.
+- a5 core split uses `GetCubeNum()=32`; a2 uses `20`. Verify load balance separately for each target.
 - a5 vec-side `DBuff UB` allocations up to `256 KB` must stay within `192 KB` on a2.
 
 Practical rule: when writing an a2 kernel, always verify `L0C DBuff` first. `DBuff` allocates 2 slots, so a single `l0c` allocation needs `2 * TILE_M * TILE_N * sizeof(dtype) <= l0c_cap`.
 
 ## 5. Capacity rules are mandatory authoring checks
 
-Before blaming the simulator, check the real buffer budgets.
-
-Repository authoring rule (shared across devices):
-- `L0A` budget: `64 KB`
-- `L0B` budget: `64 KB`
-
-Device-specific budgets (see section 4 above):
-- `L0C` budget: `128 KB` (a2) / `256 KB` (a5)
-- `UB` budget: `192 KB` (a2) / `256 KB` (a5)
-
-Convert element counts into bytes using the real local-buffer dtype size.
-
-### `splitk` capacity model
-- `L0A` elements: `TILE_M * SPLIT_K * 2`
-- `L0B` elements: `TILE_N * SPLIT_K * 2`
-- the extra `* 2` is the DBUF factor
-
-### `splitn` capacity model
-- `L0A` elements: `TILE_M * TILE_K * 2`
-- `L0B` elements: `SPLIT_N * TILE_K * 2`
-- the extra `* 2` is the DBUF factor
-
-### Byte-budget rule
-- `l0a_bytes = l0a_elements * l0a_dtype_size`
-- `l0b_bytes = l0b_elements * l0b_dtype_size`
-- require both `l0a_bytes <= 64 * 1024` and `l0b_bytes <= 64 * 1024`
+Before blaming the simulator, check the real buffer budgets. The per-device caps (`L0A`, `L0B`, `L0C`, `UB`) live in `agent/references/facts-device-runtime.md`, and the `splitk` / `splitn` element count / byte-budget formulas live in `agent/references/facts-authoring.md`. Convert element counts into bytes using the real local-buffer dtype size, and require each buffer to stay within its cap.
 
 ## 6. Choosing `splitk` vs `splitn`
 
-Use the overflowing side to choose the split mode.
-Do not switch blindly.
+Use the overflowing side to choose the split mode (do not switch blindly).
 
-Choose `splitk` when:
-- K-side staging into `L0A` / `L0B` is too large
-- you want to keep a large outer `TILE_K` for strategy selection but legalize the real inner load size
+Choose `splitk` when K-side staging into `L0A` / `L0B` is too large, or when you want to keep a large outer `TILE_K` for strategy selection but legalize the real inner load size.
 
-Choose `splitn` when:
-- N-side staging is too large
-- output-tile width pushes the buffer budget too far
+Choose `splitn` when N-side staging is too large, or when output-tile width pushes the buffer budget too far.
 
-Hard rule:
-- keep both `splitk` and `splitn` at `>= 32`
-- do not push either one below `32`
+Hard rule (`splitk`, `splitn` >= `32`) and the validated large-`K` aligned MKNK example (`TILE_M=128, TILE_N=256, TILE_K=256, SPLIT_K=64`) live in `agent/references/facts-authoring.md`.
 
 Fallback rules:
 - if `splitk` fails even at `32`, retile `TILE_M` / `TILE_N`
 - if `splitn` fails even at `32`, try `splitk` instead of pushing `splitn` lower
 
-## 7. Large-`K` validated pattern in this repository
+Practical rule for the validated pattern: choose `m_split` / `n_split` from the outer tile; use `splitk` only to legalize the inner cube staging.
 
-Stable pattern for aligned `MKNK` half-input matmul:
-- keep outer `TILE_K=256` for datamove/core-split selection
-- legalize the real inner buffer budget with `SPLIT_K=64`
-
-Concrete validated example:
-- `TILE_M=128`
-- `TILE_N=256`
-- `TILE_K=256`
-- `SPLIT_K=64`
-
-Byte check:
-- `L0A = 128 * 64 * 2 * 2 = 32 KB`
-- `L0B = 256 * 64 * 2 * 2 = 64 KB`
-
-Practical rule:
-- choose `m_split` / `n_split` from the outer tile
-- use `splitk` only to legalize the inner cube staging
-
-## 8. `L0C` authoring rule
+## 7. `L0C` authoring rule
 
 Treat non-zero `L0C` row offsets on matmul destinations as unsupported in authoring.
 Even though the simulator has an offset path, the repository rule is:
@@ -156,7 +95,7 @@ Even though the simulator has an offset path, the repository rule is:
 
 `N`-side subdivision is still fine when the destination remains anchored.
 
-## 9. Quick checklist
+## 8. Quick checklist
 
 Before accepting a tiled kernel, verify:
 - **target device identified** (a2/a5) and device-specific budgets used

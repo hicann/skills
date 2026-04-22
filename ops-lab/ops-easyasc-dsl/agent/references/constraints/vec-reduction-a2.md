@@ -53,6 +53,38 @@ How brcb works:
 
 Result: `ub_max[n*8 : n*8+8]` all contain `max_of_row_n` for n in 0..63.
 
+### 3a. Dense row `[1, 64]` -> broadcast `[64, 8]` also needs explicit `brcb` params
+
+When the scalar statistics arrive as one dense row such as:
+
+- `qkmaxbuf = Tensor(DT.float, [1, 64], Position.UB)`
+- `qksumbuf = Tensor(DT.float, [1, 64], Position.UB)`
+
+and the destination is the usual broadcast format:
+
+- `qkmaxbrcb = Tensor(DT.float, [64, 8], Position.UB)`
+
+do **not** rely on default `brcb(...)` parameter inference.
+
+Validated pattern:
+
+```python
+qkmaxbuf <<= qkmax[bh:bh + 1, row0:row0 + 64]
+brcb(qkmaxbrcb, qkmaxbuf, repeat=64 // 8, dst_blk_stride=1, dst_rep_stride=8)
+```
+
+Why this matters:
+- the source load into `[1,64]` is fine
+- the failure comes from the broadcast configuration, not from the GM -> UB read itself
+- with the validated explicit parameters, row `r` is expanded to `qkmaxbrcb[r, 0:8]`
+
+Concrete reproducer:
+- `tmp/validate_row64_brcb.py`
+
+Practical rule:
+- for row-stat broadcasts on a2, treat `brcb(..., dst_blk_stride=1, dst_rep_stride=8)` as mandatory
+- when the source is `[1,64]`, also pin `repeat=64 // 8` explicitly in validated kernels instead of trusting defaults
+
 ## 4. Complete row-max pattern for [HALF_M, 128] float data
 
 ```python
@@ -139,7 +171,7 @@ ub_rmax_s   = Tensor(DT.float, [HALF_M, 1], Position.UB)  # running max (persist
 ub_max      = Tensor(DT.float, [HALF_M, 8], Position.UB)   # broadcast for sub
 
 # before inner loop: initialize running max
-dup(ub_rmax_s, float('-inf'))
+dup(ub_rmax_s, neg_large)
 
 # inside each tile:
 cmax(ub_max_s, ub_tmp)                                     # per-tile row max
@@ -148,6 +180,9 @@ brcb(ub_max, ub_rmax_s, dst_blk_stride=1, dst_rep_stride=8)  # broadcast AFTER u
 sub(ub_data[0:M, 0:64], ub_data[0:M, 0:64], ub_max)
 sub(ub_data[0:M, 64:128], ub_data[0:M, 64:128], ub_max)
 ```
+
+Here `neg_large` is a sufficiently large finite negative sentinel, not literal
+`float("-inf")`.
 
 UB overhead for running max: one extra `[64, 1]` float tensor = 0.25 KB.
 
@@ -219,7 +254,7 @@ For streamed normalized attention on a2, the stable update order is:
 - `agent/example/kernels/a2/flash_attn_score_iter.py` — running max across tiles using `[M,1]` scalar `vmax`
 - `agent/example/kernels/a2/flash_attn_unnorm.py` — delayed `expdiff` computed from copied `[M,1]` running state
 - `agent/example/kernels/a2/flash_attn_full.py` — running sum + final sliced `div` on top of the delayed numerator pipeline
-- `easyasc/simulator/pipe_v.py` — cmax, brcb, dup simulator implementation
+- `easyasc/simulator_v2/ops/vec/v.py` and `easyasc/simulator_v2/ops/vec/_legacy_vpipe.py` — current vec runtime path for `cmax`, `brcb`, and `dup`
 - `easyasc/stub_functions/vec/group.py` — cmax stub with dst_rep_stride default
 - `easyasc/stub_functions/vec/dupbrcb.py` — dup and brcb stubs
 - `easyasc/stub_functions/vec/vecutils.py` — `infer_strides` and `infer_repeat` logic

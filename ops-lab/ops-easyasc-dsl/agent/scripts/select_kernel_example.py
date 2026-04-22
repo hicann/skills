@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
-
 """Select relevant kernel examples from the generated kernel index."""
 
 import argparse
@@ -18,8 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-SKILL_ROOT = Path(__file__).resolve().parent.parent
-KERNEL_INDEX = SKILL_ROOT / "index" / "kernels.json"
+ROOT = Path(__file__).resolve().parent.parent.parent
+KERNEL_INDEX = ROOT / "agent" / "index" / "kernels.json"
 
 TOPOLOGY_CHOICES = [
     "cube-only",
@@ -163,6 +162,19 @@ def _field_token_sets(entry: Dict[str, Any]) -> Dict[str, Set[str]]:
     }
 
 
+def _find_token_overlap(tokens: Sequence[str], token_set: Set[str]) -> Set[str]:
+    overlap = set()
+    for token in tokens:
+        if token in token_set:
+            overlap.add(token)
+            continue
+        if len(token) < 3:
+            continue
+        if any(candidate.startswith(token) or token.startswith(candidate) for candidate in token_set):
+            overlap.add(token)
+    return overlap
+
+
 def _match_query(tokens: Sequence[str], field_tokens: Dict[str, Set[str]]) -> Tuple[int, List[str], Set[str]]:
     if not tokens:
         return 0, [], set()
@@ -179,15 +191,7 @@ def _match_query(tokens: Sequence[str], field_tokens: Dict[str, Set[str]]) -> Tu
     matched_tokens = set()
 
     for field_name, token_set in field_tokens.items():
-        overlap = set()
-        for token in tokens:
-            if token in token_set:
-                overlap.add(token)
-                continue
-            if len(token) < 3:
-                continue
-            if any(candidate.startswith(token) or token.startswith(candidate) for candidate in token_set):
-                overlap.add(token)
+        overlap = _find_token_overlap(tokens, token_set)
         if not overlap:
             continue
         matched_tokens.update(overlap)
@@ -197,19 +201,42 @@ def _match_query(tokens: Sequence[str], field_tokens: Dict[str, Set[str]]) -> Tu
     return score, matched_fields, matched_tokens
 
 
+def _score_query_intent(query_tokens: Sequence[str], entry_tokens: Set[str]) -> Tuple[int, List[str]]:
+    score = 0
+    reasons = []
+    query_token_set = set(query_tokens)
+
+    if query_token_set.intersection(["softmax", "normalized"]):
+        matched = sorted(_find_token_overlap(["softmax", "normalized"], entry_tokens))
+        if matched:
+            score += len(matched) * 2
+            reasons.append("normalized/softmax intent matched: %s" % ", ".join(matched))
+
+    specialization_groups = [
+        ("causal specialization", {"causal"}),
+        ("fp8 specialization", {"fp8", "float8", "e5m2", "e4m3"}),
+        ("hif8 specialization", {"hif8"}),
+        ("block32 specialization", {"block32"}),
+    ]
+    for label, group_tokens in specialization_groups:
+        if query_token_set.intersection(group_tokens):
+            continue
+        matched = sorted(entry_tokens.intersection(group_tokens))
+        if matched:
+            score -= 3
+            reasons.append("%s unrequested: %s" % (label, ", ".join(matched)))
+
+    return score, reasons
+
+
 def load_index(path: Path) -> Dict[str, Any]:
     if not path.exists():
-        raise FileNotFoundError(
-            "Kernel index not found: %s. Run "
-            "`python3 agent/scripts/build_agent_index.py` "
-            "first." % path
-        )
+        raise FileNotFoundError("Kernel index not found: %s. Run `python3 tools/build_agent_index.py` first." % path)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def score_entries(
-    entries: Iterable[Dict[str, Any]],
-    args: argparse.Namespace,
+    entries: Iterable[Dict[str, Any]], args: argparse.Namespace,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     strong_results = []
     weak_results = []
@@ -218,6 +245,7 @@ def score_entries(
 
     for entry in entries:
         entry_text = _collect_entry_text(entry)
+        entry_tokens = set(_tokenize(entry_text))
         topology = _canonical_topology(entry.get("topology", ""))
         tags = _derive_tags(entry, entry_text)
         features = _derive_features(entry, entry_text, topology)
@@ -258,6 +286,10 @@ def score_entries(
         if matched_fields:
             reasons.append("query matched: %s" % "; ".join(matched_fields))
 
+        intent_score, intent_reasons = _score_query_intent(query_tokens, entry_tokens)
+        score += intent_score
+        reasons.extend(intent_reasons)
+
         result = {
             "path": entry["path"],
             "name": entry.get("name", Path(entry["path"]).name),
@@ -265,6 +297,7 @@ def score_entries(
             "formula": entry.get("formula", ""),
             "topology": topology,
             "study_for": entry.get("study_for", []),
+            "deep_note": entry.get("deep_note", ""),
             "do_not_copy_when": entry.get("do_not_copy_when", []),
             "score": score,
             "why": reasons,
@@ -316,6 +349,8 @@ def print_text_results(results: List[Dict[str, Any]], args: argparse.Namespace, 
         _print_list_block("do_not_copy_when", item["do_not_copy_when"])
         if args.catalog:
             _print_list_block("formula", item["formula"])
+            if item["deep_note"]:
+                print("   deep_note: %s" % item["deep_note"])
             if item["tags"]:
                 print("   tags: %s" % ", ".join(item["tags"]))
             if item["features"]:
@@ -347,9 +382,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--topology", choices=TOPOLOGY_CHOICES, help="Canonical topology filter.")
     parser.add_argument("--tag", action="append", default=[], choices=TAG_CHOICES, help="Repeatable tag filter.")
     parser.add_argument(
-        "--has", action="append", default=[],
-        choices=FEATURE_CHOICES,
-        help="Repeatable feature filter."
+        "--has", action="append", default=[], choices=FEATURE_CHOICES,
+        help="Repeatable feature filter.",
     )
     parser.add_argument("--dtype", default="", help="Optional dtype keyword filter.")
     parser.add_argument("--limit", type=int, default=5, help="Maximum number of results to print.")

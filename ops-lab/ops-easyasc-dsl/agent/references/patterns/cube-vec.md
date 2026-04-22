@@ -1,5 +1,7 @@
 # Cube-to-Vec Pattern
 
+> Generic baseline only. For a2 (b3) kernels, prefer `agent/references/patterns/a2-cube-vec.md`, which adds the mandatory a2 GM-workspace bridge and device-specific constraints.
+
 Read this file when cube work produces an intermediate that vec work must postprocess before final writeback.
 
 ## Use this pattern when

@@ -20,6 +20,17 @@ Typical target formula:
 This is the normalized counterpart to `a2-cube-vec-cube-vec.md`.
 Use that older pattern only when the kernel stops at the unnormalized numerator.
 
+## One-page route for the common case
+
+If this file matches your contract, do **not** preload all of:
+- `agent/references/constraints/reduction.md`
+- `agent/references/constraints/vec-reduction-a2.md`
+- `agent/references/constraints/vec-stride.md`
+- `agent/references/constraints/online-softmax-tail.md`
+
+This page now owns the common normalized-online-softmax authoring rules.
+Open the smaller constraint pages only when a specific failure mode still remains unclear after this file.
+
 ## Why this needs its own a2 pattern
 
 The a2 hardware constraints are the same as the unnormalized case:
@@ -128,6 +139,23 @@ The normalized online update order matters:
 Do not move the row-sum update after the cast.
 That would silently change the reference contract.
 
+## Vec rules you usually need without extra docs
+
+For the common `TILE_N = 128`, `D = 128` path, the usual extra questions are already answered here:
+
+1. keep `running_max`, `running_sum`, and delayed `expdiff` in scalar format `[HALF_M, 1]`
+2. snapshot scalar state with `add(dst, src, zero)`, not `ub_to_ub`
+3. `cmax` / `cadd` output dense scalars, so broadcast them with:
+   - `brcb(dst, src, dst_blk_stride=1, dst_rep_stride=8)`
+4. when a wide `[HALF_M, 128]` buffer is paired with a narrow `[HALF_M, 8]` broadcast row, operate on:
+   - `buf[:, 0:64]`
+   - `buf[:, 64:128]`
+   rather than on the full 128-column view in one vec call
+5. update `running_sum` from the float `p_j` tile before any cast to `half` or `hif8`
+6. for non-aligned `S2`, invalidate score columns before `cmax` with a sufficiently negative finite sentinel; `valid_n` on the GM load alone is not enough
+
+These six rules cover the usual reasons people would otherwise open the separate reduction, vec-reduction, vec-stride, and tail files.
+
 ## Critical scalar-state rule on a2
 
 Do **not** copy `[HALF_M, 1]` scalar-format state with `ub_to_ub`.
@@ -173,11 +201,12 @@ Stable rule:
 - load `k` / `v` through `valid_n`
 - keep local score buffers full-sized
 - before `cmax`, force invalid score columns to behave like `-inf`
+- when materializing that mask, use a sufficiently large finite negative fill value instead of literal `-inf`
 - after `exp`, those same columns naturally behave like `0`
 
 For the current `TILE_N = 128` layout, the simplest a2 implementation is:
 - split the score tile into two `[HALF_M, 64]` halves
-- use vec mask + `dup(-inf)` on the affected half
+- use vec mask + finite-negative `dup(...)` on the affected half
 - recompute `prev_valid_n` for the delayed `v` load in stage 2
 
 Read next for the exact rule and mask-construction trick:
@@ -205,12 +234,13 @@ For non-aligned `S2` extensions, add at least:
 4. one mid-right-half case: `S2 % 128 == 96`
 5. one last-column case: `S2 % 128 == 127`
 
-## Files to study
+## Files to study / deeper fallbacks
 
 - `agent/example/kernels/a2/flash_attn_full.py`
 - `agent/example/kernels/a2/flash_attn_unnorm.py`
 - `agent/example/kernels/a2/flash_attn_score_pv.py`
 - `agent/references/patterns/a2-cube-vec-cube-vec.md`
-- `agent/references/constraints/reduction.md`
-- `agent/references/constraints/vec-reduction-a2.md`
-- `agent/references/constraints/vec-stride.md`
+- `agent/references/constraints/reduction.md` — fallback only when the online update order is still unclear
+- `agent/references/constraints/vec-reduction-a2.md` — fallback only when the `cmax/cadd -> brcb` detail is still unclear
+- `agent/references/constraints/vec-stride.md` — fallback only when a sliced wide/narrow vec op is still unclear
+- `agent/references/constraints/online-softmax-tail.md` — fallback only when the non-aligned `S2` mask construction itself is the question
