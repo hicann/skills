@@ -18,12 +18,10 @@
 | API-2 | Ascend C 计算类 API | 确认可用的替代 API 列表 |
 | API-3 | `DataCopy`, `DataCopyPad` | 确认 32 字节对齐要求 |
 | API-4 | `Compare` | 确认 256 字节对齐要求 |
-| API-5 | `EnQue`, `DeQue` | 确认流水线同步机制 |
 | API-6 | `AllocTensor`, `FreeTensor` | 确认内存管理配对要求 |
 | API-8 | 循环类 API | 确认 repeatTimes 类型限制 |
 | API-9 | `Cast` | 确认 RoundMode 参数说明 |
 | API-10 | `DataCopy`, `DataCopyPad` | 确认两套参数结构体的 blockLen 单位差异 |
-| API-11 | `SetGlobalBuffer`, GM 偏移计算 | 确认多维索引是否需要 int64_t |
 | API-12 | `CrossCoreSetFlag`, `CrossCoreWaitFlag` | 确认同步配对规则和提前退出风险 |
 
 ---
@@ -36,13 +34,11 @@
 | API-2 | 禁止使用 std:: 计算函数 | API黑名单 | 高 |
 | API-3 | DataCopy/DataCopyPad 对齐要求 | 数据搬运 | 高 |
 | API-4 | Compare API 256字节对齐要求 | 数据搬运 | 高 |
-| API-5 | EnQue/DeQue 必须配对使用 | 流水线同步 | 高 |
 | API-6 | AllocTensor/FreeTensor 必须配对使用 | 内存管理 | 高 |
 | API-7 | 禁止动态内存分配 | 内存管理 | 高 |
 | API-8 | repeatTimes 限制（≤255） | API限制 | 中 |
 | API-9 | Cast RoundMode 正确性 | 类型转换 | 中 |
 | API-10 | DataCopyParams vs DataCopyExtParams 单位差异 | 数据搬运 | 高 |
-| API-11 | GM 偏移计算必须使用 int64_t | 数据搬运 | 高 |
 | API-12 | CrossCoreSetFlag/WaitFlag 必须对称 | 核间同步 | 高 |
 
 ---
@@ -222,59 +218,7 @@ DataCopy(dstGm, yLocal, A0);  // 只输出 A0 个
 
 ---
 
-## API-5: EnQue/DeQue 必须配对使用
-
-**严重级别**：高
-
-### 问题描述
-
-TQue 的 EnQue/DeQue 机制提供硬件同步点。DataCopy 是异步 DMA 操作，直接在搬运后的数据上做 Vector 计算可能读到未完成的数据。
-
-### 核心原理
-
-```
-EnQue(xLocal)  → 标记 buffer 数据就绪
-DeQue<float>() → 阻塞等待数据就绪
-```
-
-### 错误示例
-
-```cpp
-// ❌ 错误：DataCopy 后直接使用数据
-AscendC::LocalTensor<float> xLocal = inQueueX.AllocTensor<float>();
-AscendC::DataCopyPad(xLocal, xGm[offset], copyParams, padParams);
-AscendC::Adds<float>(yLocal, xLocal, 1.0f, count);  // 可能读到未完成搬运的数据！
-```
-
-### 正确示例
-
-```cpp
-// ✅ 正确：使用 EnQue/DeQue 同步
-// Step 1: CopyIn - MTE2 搬运
-AscendC::LocalTensor<float> xLocal = inQueueX.AllocTensor<float>();
-AscendC::DataCopyPad(xLocal, xGm[gmOffset], copyParams, padParams);
-inQueueX.EnQue(xLocal);                    // 标记"就绪"
-
-// Step 2: Compute - Vector 计算
-AscendC::LocalTensor<float> xIn = inQueueX.DeQue<float>();  // 阻塞等待 MTE2 完成
-AscendC::Adds<float>(yLocal, xIn, 1.0f, count);
-outQueueY.EnQue(yLocal);
-inQueueX.FreeTensor(xIn);
-
-// Step 3: CopyOut - MTE3 搬运
-AscendC::LocalTensor<float> yOut = outQueueY.DeQue<float>();  // 阻塞等待 Vector 完成
-AscendC::DataCopyPad(yGm[gmOffset], yOut, copyParams);
-outQueueY.FreeTensor(yOut);
-```
-
-### 检视方法
-
-```bash
-# 检查 EnQue/DeQue 配对
-grep -c "EnQue" <file>
-grep -c "DeQue" <file>
-# 两者数量应该相等
-```
+> **注意**：流水线同步相关规范（EnQue/DeQue 配对使用）已移至 `ascendc-perf.md` 条例 PREC-1，请参阅该文档获取完整的三步流程（CopyIn/Compute/CopyOut）说明。
 
 ---
 
@@ -430,13 +374,11 @@ AscendC::Cast<half>(dstLocal, srcLocal, AscendC::RoundMode::CAST_ROUND, count);
 - [ ] **API-2**: 是否使用了 std:: 计算函数？（改用 Ascend C API）
 - [ ] **API-3**: DataCopy 的数据量是否 32 字节对齐？（非对齐用 DataCopyPad）
 - [ ] **API-4**: Compare API 的 count 是否 256 字节对齐？
-- [ ] **API-5**: EnQue/DeQue 是否配对？
 - [ ] **API-6**: AllocTensor/FreeTensor 是否配对？分支/提前 return 路径是否都有 Free？
 - [ ] **API-7**: 是否有动态内存分配？（禁止）
 - [ ] **API-8**: repeatTimes 是否可能超过 255？
 - [ ] **API-9**: Cast 的 RoundMode 是否正确？
 - [ ] **API-10**: DataCopyParams.blockLen 是否用了 32字节块数？DataCopyExtParams.blockLen 是否用了字节数？
-- [ ] **API-11**: 多维 GM 偏移乘法中第一个操作数是否强转 int64_t？
 - [ ] **API-12**: CrossCoreSetFlag/WaitFlag 是否一一配对？所有代码路径（含提前 return）是否都有 SetFlag？是否与 Matmul 高阶 API 混用？同一 flagId 是否超过 15 次？
 
 ---
@@ -513,49 +455,7 @@ grep -n "blockLen\s*=" <file>
 
 ---
 
-## API-11: GM 偏移计算必须使用 int64_t
-
-**严重级别**：高
-
-### 问题描述
-
-多维张量的 GM 偏移量在大模型场景下极易超过 `uint32_t` 上限（~4GB）。当 batch、head、seqLen、headDim 相乘时，结果可能达数十 GB。
-
-**典型溢出场景**：
-- batch=32, heads=32, seqLen=8192, headDim=128, FP16 → 32×32×8192×128×2 = **54GB**
-
-更隐蔽的错误：即使最终变量声明为 `int64_t`，若右侧乘法的操作数全为 `uint32_t`，乘法先以 `uint32_t` 计算并溢出，再转换为 `int64_t` 也于事无补。
-
-### 错误示例
-
-```cpp
-// ❌ 错误：uint32_t 直接相乘溢出
-uint32_t offset = batchIdx * numHeads * seqLen * headDim;
-
-// ❌ 隐蔽错误：赋给 int64_t，但右侧先以 uint32_t 溢出
-int64_t offset = batchIdx * numHeads * seqLen * headDim;
-//               ↑ 四个 uint32_t 相乘，先 overflow 再赋值，结果仍错
-```
-
-### 正确示例
-
-```cpp
-// ✅ 正确：强转第一个操作数，后续自动提升
-int64_t offset = (int64_t)batchIdx * numHeads * seqLen * headDim;
-
-// ✅ 等效：声明变量时直接用 int64_t
-int64_t batchOffset = (int64_t)batchIdx * numHeads;
-int64_t offset = batchOffset * seqLen * headDim;
-```
-
-### 检视方法
-
-```bash
-grep -n "Offset\s*=\|offset\s*=" <file>
-grep -n "SetGlobalBuffer" <file>
-```
-
-**检视规则**：表达式中有 2 个及以上维度相乘时，检查第一个操作数是否已显式转换为 `int64_t`。
+> **注意**：GM 偏移计算使用 int64_t 的规范已移至 `ascendc-topk.md` 条目 8，请参阅该文档获取完整的溢出场景分析和正确示例。
 
 ---
 

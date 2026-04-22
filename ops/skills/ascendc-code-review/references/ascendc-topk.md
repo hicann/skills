@@ -236,22 +236,48 @@ auto* attrActivateLeft = attrs->GetAttrPointer<int>(INDEX_ATTR_ACTIVATE_LEFT);  
 
 > **Kernel 侧说明**：Kernel 中使用 `GM_ADDR` 和 `GlobalTensor`，偏移量计算需用 `int64_t` 防止大地址溢出。
 
-**正确示例**
+**典型溢出场景**
 
-```cpp
-// Host侧 Tiling
-int64_t totalLength = shape[0] * shape[1] * shape[2];  // 使用 int64_t
+多维张量的 GM 偏移量在大模型场景下极易超过 `uint32_t` 上限（~4GB）：
 
-// Kernel侧
-int64_t blockLength_ = 0;  // 类成员变量使用 int64_t
-inputGMX.SetGlobalBuffer((__gm__ T*)x + blockLength_ * AscendC::GetBlockIdx(), blockLength_);
-```
+- batch=32, heads=32, seqLen=8192, headDim=128, FP16 → 32×32×8192×128×2 = **54GB**
+
+**隐蔽错误**
+
+即使最终变量声明为 `int64_t`，若右侧乘法的操作数全为 `uint32_t`，乘法先以 `uint32_t` 计算并溢出，再转换为 `int64_t` 也于事无补。
 
 **错误示例**
 
 ```cpp
+// ❌ 错误：int32_t 可能溢出
 int32_t totalLength = shape[0] * shape[1];  // 大 shape 可能溢出
+
+// ❌ 隐蔽错误：赋给 int64_t，但右侧先以 uint32_t 溢出
+int64_t offset = batchIdx * numHeads * seqLen * headDim;
+//               ↑ 四个 uint32_t 相乘，先 overflow 再赋值，结果仍错
 ```
+
+**正确示例**
+
+```cpp
+// ✅ Host侧 Tiling：使用 int64_t
+int64_t totalLength = shape[0] * shape[1] * shape[2];
+
+// ✅ Kernel侧：类成员变量使用 int64_t
+int64_t blockLength_ = 0;
+inputGMX.SetGlobalBuffer((__gm__ T*)x + blockLength_ * AscendC::GetBlockIdx(), blockLength_);
+
+// ✅ 多维偏移：强转第一个操作数，后续自动提升
+int64_t offset = (int64_t)batchIdx * numHeads * seqLen * headDim;
+
+// ✅ 等效：声明变量时直接用 int64_t
+int64_t batchOffset = (int64_t)batchIdx * numHeads;
+int64_t offset = batchOffset * seqLen * headDim;
+```
+
+**检视规则**
+
+表达式中有 2 个及以上维度相乘时，检查第一个操作数是否已显式转换为 `int64_t`。
 
 ---
 

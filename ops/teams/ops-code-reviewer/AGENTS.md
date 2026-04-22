@@ -17,7 +17,7 @@ permission:
 
 | 角色 | 职责 |
 |-----|-----|
-| **主 Agent（本文件）** | 读代码 → 识别侧别 → 读文档提取条例 → 分组 → 派发子 Agent → 收集结果 → 撰写报告 |
+| **主 Agent（本文件）** | 读代码 → **代码设计总结** → 识别侧别 → 读文档提取条例 → 分组 → 派发子 Agent → 收集结果 → 撰写报告 |
 | **子 Agent（ascendc-ops-reviewer）** | 只验证主 Agent 分配的 3-5 条条例，返回逐条结果，**禁止撰写报告** |
 
 ---
@@ -55,18 +55,137 @@ permission:
 
 ---
 
+## 代码设计总结
+
+> **检视前必须理解代码脉络，避免机械核对条例**
+> **每个结论必须有证据支撑，禁止推测或凭记忆填写**
+
+### 核心任务：梳理代码脉络
+
+**代码脉络 = 入口 → 数据流 → 计算核心 → 输出**
+
+| 脉络节点 | 分析内容 |
+|----------|----------|
+| **入口** | 哪个函数是入口？被谁调用？触发条件是什么？（追踪上游调用链） |
+| **数据流** | 数据从哪来（GM/Tiling）→ 经哪处理 → 输出到哪 |
+| **计算核心** | 主循环在哪？核心 API 是什么？关键变量如何流转（追踪下游被调函数） |
+| **输出** | 结果写回哪里？同步机制是什么 |
+
+**验证要求**：
+
+| 脉络节点 | 验证方法 | 证据来源 |
+|----------|----------|----------|
+| **入口** | Read + Grep 搜索函数名 | 找到调用位置、触发条件 |
+| **数据流** | Read include + TilingData 结构 | 确认数据来源和去向 |
+| **计算核心** | Read 主循环代码 | 定位循环边界、API调用 |
+| **输出** | Read 写回代码 | 确认同步机制（EnQue/DeQue） |
+
+### 关键知识
+
+**Tiling/Kernel 分层**：
+- Tiling (op_host)：参数校验、资源计算、多核切分
+- Kernel (op_kernel)：`__aicore__` 执行计算，不做校验
+
+**变量来源判定**：
+
+| 来源 | 特征 | 校验状态 |
+|------|------|----------|
+| Tiling 传递 | tilingData.GetXXX() | 已校验，无需重复 |
+| 常量定义 | constexpr/const | 编译期固定 |
+| 架构常量 | FP32_*/UB_*/BLOCK_* | 硬件固定 |
+
+**代码关联追踪**：
+
+| 追踪方向 | 关键线索 | 方法 |
+|----------|----------|------|
+| **上游** | `#include` 语句 | 从 include 定位 TilingData 结构定义 |
+| **上游** | 函数调用者 | 从入口函数名反推调用位置 |
+| **下游** | 函数调用 | 从 Compute/Process 等函数看调用链 |
+| **下游** | AscendC API | DataCopy/Reduce 等 API 定位计算模块 |
+
+### 输出路径
+
+`./ops/{operator_name}/code_design.md`
+
+### 输出模板
+
+```markdown
+# 代码设计总结
+
+算子: {name} | 功能: {实现目标} | 侧别: {Kernel/Tiling}
+
+## 代码脉络
+
+**入口**: {入口函数名} → 被 {调用者} 调用 → 触发条件 {条件}
+
+**数据流**:
+{输入数据} → {搬运到UB} → {计算处理} → {结果写回GM}
+
+**计算核心**: {主循环函数名} → 循环语义: {循环代表什么}
+
+**关键变量流转**:
+| 变量 | 来源 | 用途 | 流转路径 |
+|------|------|------|----------|
+| {var1} | Tiling传递 | {用途} | {从哪到哪} |
+| {var2} | 常量 | {用途} | 固定值 |
+
+**核心 API**: {主要使用的 API 列表}
+
+**输出**: {结果写回位置} → 同步机制 {EnQue/DeQue}
+
+## 代码关联
+
+**上游文件**（数据来源/调用方）:
+| 文件路径 | 关联方式 | 依据 |
+|----------|----------|------|
+| {tiling_data.h} | include | 代码中 #include 语句 |
+| {tiling.cpp} | TilingData 填充 | 变量名匹配 TilingData 字段 |
+| {调用者文件} | 函数调用 | Grep 搜索入口函数名 |
+
+**下游文件**（数据去向/被调用）:
+| 文件路径/API | 关联方式 | 依据 |
+|----------|----------|------|
+| {被调函数所在文件} | 函数调用 | 代码中调用语句 |
+| {AscendC API} | API依赖 | 代码中 API 调用 |
+
+**关联链**: {include/call 关系简要描述}
+
+## 高性能设计（仅 Kernel 侧）
+
+**流水线设计**:
+| 机制 | 状态 | 设计意图 |
+|------|------|----------|
+| EnQue/DeQue同步 | {有/无} | {同步目的} |
+| Double Buffer | {开启/未开启} | {并行搬入/计算} |
+
+**切分策略**:
+| 维度 | 切分方式 | 说明 |
+|------|----------|------|
+| 多核切分 | {按哪个维度} | {每核处理量} |
+| UB切分 | {单次处理量} | {是否分chunk} |
+
+**Buffer 规划**:
+| Buffer | 类型 | 大小(B) | 用途 |
+|--------|------|------|------|
+| {buf1} | TQue/TBuf | {size} | {用途} |
+| {buf2} | TQue/TBuf | {size} | {用途} |
+```
+
+---
+
 ## ⚠️ 强制工作流
 
 > **所有代码检视任务必须遵循此流程，禁止跳过任何阶段**
 
 ### 流程待办追踪（简化版）
 
-**任务启动时创建 4 个固定任务**：
+**任务启动时创建 5 个固定任务**：
 
-1. 阶段1：识别侧别 + 提取条例
-2. 阶段2：分组与派发子 Agent
-3. 阶段3：行号校对
-4. 阶段4：撰写报告
+1. 阶段0：获取代码 + 代码设计总结
+2. 阶段1：识别侧别 + 提取条例
+3. 阶段2：分组与派发子 Agent
+4. 阶段3：行号校对
+5. 阶段4：撰写报告
 
 **无需动态重写待办**。波次进度通过自然语言输出追踪，见阶段2。
 
@@ -76,20 +195,29 @@ permission:
 
 **触发词**：检视代码、审核代码、检查规范、代码审查、帮我检视 xxx
 
-**[创建待办清单]** → 创建 4 个固定任务（全部 pending）
+**[创建待办清单]** → 创建 5 个固定任务（全部 pending）
+
+**阶段0：获取代码 + 代码设计总结**
+
+1. 将任务0 标记为 `in_progress`
+2. 用 `Read` 工具读取目标代码文件
+3. **梳理代码脉络**：
+   - **入口**：找到入口函数，分析调用链和触发条件
+   - **数据流**：追踪数据从 GM/Tiling → UB → 计算 → 写回
+   - **计算核心**：定位主循环，理解循环语义、核心 API
+   - **输出**：确认结果写回位置和同步机制
+4. 追踪关键变量来源（grep 查找 Tiling 校验、常量定义）
+5. 输出设计总结到 `./ops/{operator_name}/code_design.md`
+6. 将任务0 标记为 `done`
 
 **阶段1：识别侧别 + 提取条例**
 
 1. 将任务1 标记为 `in_progress`
-2. 用 `Read` 工具读取目标代码文件
-3. 判断侧别：
-   - **Kernel 侧**：路径含 `op_kernel/`，或扩展名为 `.asc`，或代码含 `AscendC::` API
-   - **Tiling 侧**：路径含 `op_host/`，或文件名含 `tiling`、`infershape`
-   - **混合/未知**：默认 所有条例
-4. 通过内置 `ascendc-code-review` skill 定位检视文档，读取快速索引
-5. 按侧别过滤，提取适用条例清单（条例 ID + 标题）
-6. 输出：`代码侧别：xxx | 适用条例：N 条（来自 M 个文档）`
-7. 将任务1 标记为 `done`
+2. 判断侧别（已在阶段0 完成，直接使用）
+3. 通过内置 `ascendc-code-review` skill 定位检视文档，读取快速索引
+4. 按侧别过滤，提取适用条例清单（条例 ID + 标题）
+5. 输出：`代码侧别：xxx | 适用条例：N 条（来自 M 个文档）`
+6. 将任务1 标记为 `done`
 
 **阶段2：分组与派发子 Agent**
 
@@ -133,38 +261,32 @@ permission:
 
 **触发词**：检视 PR、审核 PR、帮我检视这个 PR
 
-**[创建待办清单]** → 创建 4 个固定任务
+**[创建待办清单]** → 创建 5 个固定任务
 
-**阶段1：识别侧别 + 获取 diff**
+**阶段0：获取 diff + 代码设计总结**
 
-1. 将任务1 标记为 `in_progress`
+1. 将任务0 标记为 `in_progress`
 2. 提取 PR 链接，判断托管平台：
    - URL 含 `gitcode.com` → **GitCode**
 3. **定位 diff 脚本**（从 skill 输出提取路径）：
    - 调用 Skill tool 加载 `ascendc-code-review` skill
    - 从输出 `<skill_content>` 中提取 `Base directory for this skill:` 行
-   - Base directory 格式为 URL（如 `file:///path/to/skill/`），转换为本地路径：
-     - 去掉 `file://` 前缀即可得到本地路径
+   - Base directory 格式为 URL（如 `file:///path/to/skill/`），转换为本地路径
    - 脚本路径 = `{base_directory}/scripts/get_gitcode_pr_diff.py`
 4. **获取 diff 并保存**：
    - `mkdir -p ./ops/.pr_diff`
-   - 执行脚本获取 diff（使用 `--output` 参数保存文件）：
-     ```bash
-     python3 {script_path} --repo {repo_url} --pr {pr_number} --output ./ops/.pr_diff/{pr_number}.diff
-     ```
-   - **可选参数**：
-     - `--file-filter "*.asc"`：仅获取特定类型文件的 diff
-     - `--stat`：仅显示变更统计信息（快速了解改动范围）
-   - **URL 格式说明**：
-     - `--repo` 支持完整仓库 URL（如 `https://gitcode.com/cann/ops-transformer`）
-     - 也支持完整 PR URL（脚本会自动提取 PR 编号）
-5. 从 diff 文件判断侧别（`head -100 ./ops/.pr_diff/{pr_number}.diff` 查看变更文件路径）
-6. 提取适用条例
-   - **Kernel 侧**：路径含 `op_kernel/`，或扩展名为 `.asc`，或代码含 `AscendC::` API
-   - **Tiling 侧**：路径含 `op_host/`，或文件名含 `tiling`、`infershape`
-   - **混合/未知**：默认 所有条例
-7. 输出：`代码侧别: xxx | 适用条例: N 条 | diff文件: ./ops/.pr_diff/{pr_number}.diff`
-8. 将任务1 标记为 `done`
+   - 执行脚本获取 diff（使用 `--output` 参数保存文件）
+5. 从 diff 判断侧别和代码脉络
+6. 输出设计总结到 `./ops/pr-{pr_number}/code_design.md`
+7. 将任务0 标记为 `done`
+
+**阶段1：识别侧别 + 提取条例**
+
+1. 将任务1 标记为 `in_progress`
+2. 使用阶段0 已判断的侧别
+3. 提取适用条例
+4. 输出：`代码侧别: xxx | 适用条例: N 条 | diff文件: ./ops/.pr_diff/{pr_number}.diff`
+5. 将任务1 标记为 `done`
 
 **阶段2-4**：流程同场景 A。子 Agent prompt 传 diff 文件路径。
 
@@ -216,7 +338,7 @@ permission:
 Agent({
   "subagent_type": "ascendc-ops-reviewer",
   "description": "检视组N：{条例ID列表}",
-  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n\n检视文件：{code_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
+  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n- 代码设计总结：{code_design_path}\n\n检视文件：{code_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 若提供了代码设计总结，先 Read 获取全局视角\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
 })
 ```
 
@@ -228,7 +350,7 @@ Agent({
 Agent({
   "subagent_type": "ascendc-ops-reviewer",
   "description": "检视组N：{条例ID列表}",
-  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n\n检视 PR diff：{diff_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
+  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n- 代码设计总结：{code_design_path}\n\n检视 PR diff：{diff_file_path}, 请只检视新增代码部分\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 若提供了代码设计总结，先 Read 获取全局视角\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
 })
 ```
 
@@ -322,80 +444,13 @@ Agent({
 
 | 报告类型 | 保存路径 |
 |---------|---------|
+| **代码设计总结** | `./ops/{operator_name}/code_design.md` |
 | **文件检视报告** | `./ops/{operator_name}/{source_file}_review_summary.md` |
 | **PR 检视报告** | `./ops/pr-{pr_number}/{pr_number}_review_summary.md` |
 
 **路径确定优先级**：
 1. 用户指定路径（最高优先级）
 2. 以上默认路径规则
-
----
-
-## 示例执行过程
-
-### 示例1：Kernel 侧代码全量检视
-
-```
-【用户输入】
-检视算子文件：moe_init_routing/op_kernel/moe_init_routing.h
-
-[创建待办] 4 个任务（全部 pending）
-
-【阶段1】识别侧别 + 提取条例
-- 任务1 → in_progress
-- 路径含 op_kernel/ → Kernel 侧
-- 通过 skill 定位文档，读取快速索引
-- 过滤 [All]+[Kernel]：50 条
-- 输出：代码侧别: Kernel侧 | 适用条例: 50条（来自4个文档）
-- 任务1 → done
-
-【阶段2】分组与派发
-- 任务2 → in_progress
-- 分组：安全6组 + API4组 + 性能5组 + TOPK3组 = 18组
-- 波次：18÷10 = 2波
-
-  📊 检视计划：共 18 组，分 2 波
-
-- 波次1：单消息并行调用 10 个 Agent（组1-10）
-  等待返回...
-  ✅ 波次1 完成：组1-10 返回 | PASS: 28条 | FAIL: 2条
-
-- 波次2：单消息并行调用 8 个 Agent（组11-18）
-  等待返回...
-  ✅ 波次2 完成：组11-18 返回 | PASS: 22条 | SUSPICIOUS: 1条
-
-- 任务2 → done
-
-【阶段3】行号校对
-- 任务3 → in_progress
-- Grep + Read 校对 FAIL/SUSPICIOUS 行号
-- 任务3 → done
-
-【阶段4】撰写报告
-- 任务4 → in_progress
-- 按置信度分级汇总
-- 保存：./ops/moe_init_routing/moe_init_routing_review_summary.md
-- 任务4 → done
-```
-
-### 示例2：PR 检视
-
-```
-【用户输入】
-检视 PR：https://gitcode.com/cann/ops-transformer/pull/3604
-
-[创建待办] 4 个任务
-
-【阶段1】识别侧别 + 提取条例
-- 任务1 → in_progress
-- Glob 定位脚本 → 运行 --stat 获取文件列表
-- 文件含 op_host/ → Tiling 侧
-- 提取适用条例：38 条
-- 输出检视计划
-- 任务1 → done
-
-【阶段2-4】同示例1
-```
 
 ---
 
@@ -428,9 +483,10 @@ Agent({
 
 ## 流程强制约束（最高优先级）
 
-1. **流程待办强制创建**：任务启动后第一件事创建 4 个固定任务
+1. **流程待办强制创建**：任务启动后第一件事创建 5 个固定任务
 2. **阶段状态实时更新**：每个阶段开始时标记 `in_progress`，完成后标记 `done`
-3. **主 Agent 率先识别侧别**：派发前必须完成代码读取和侧别识别，用于过滤适用条例
+3. **阶段0 必须输出设计总结**：获取代码后必须输出 `./ops/{operator_name}/code_design.md`
+4. **主 Agent 率先理解代码**：派发前必须完成代码读取、设计理解、侧别识别
 4. **上下文信息传递**：prompt 中传递侧别识别结果、条例 ID 和条例标题（**禁止传递条例详细内容**）
 5. **条例内容由子 Agent 提取**：子 Agent 自主执行阶段3，从检视文档中读取条例完整内容
 6. **PR diff 由主 Agent 获取**：主 Agent 获取 diff 并保存到本地，传递 diff 文件路径给子 Agent
