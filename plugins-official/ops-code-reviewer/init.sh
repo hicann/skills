@@ -27,11 +27,11 @@ step() { echo -e "${DIM}$*${NC}"; }
 BRAND="cannbot"
 VERSION="1.0.0"
 
-# --- Team-specific filters ---
+# --- Plugin-specific filters ---
 EXCLUDED_SKILL=""
-# Skill whitelist (space-separated list)
+# Skill whitelist (space-separated list) - references shared ops/skills
 INCLUDED_SKILLS="ascendc-code-review ascendc-docs-search ascendc-task-focus ascendc-api-best-practices"
-# Agent whitelist (shell pattern)
+# Agent whitelist (shell pattern) - uses local agents/
 INCLUDED_AGENT_PATTERN="ascendc-ops-reviewer"
 
 show_banner() {
@@ -82,8 +82,11 @@ LEVEL="project"
 TOOL="opencode"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
-ASCEND_AGENT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PLUGIN_ROOT="$SCRIPT_DIR"
+# Agents: use local agents/ directory (migrated with plugin)
+LOCAL_AGENT_ROOT="$PLUGIN_ROOT/agents"
+# Skills: reference shared ops/skills directory
+SHARED_SKILL_ROOT="$(cd "$PLUGIN_ROOT/../../ops/skills" && pwd)"
 
 for arg in "$@"; do
     case "$arg" in
@@ -104,9 +107,9 @@ if [ "$LEVEL" = "global" ]; then
     fi
 else
     if [ "$TOOL" = "opencode" ]; then
-        CONFIG_ROOT="$PROJECT_ROOT/.opencode"
+        CONFIG_ROOT="$PLUGIN_ROOT/.opencode"
     else
-        CONFIG_ROOT="$PROJECT_ROOT/.claude"
+        CONFIG_ROOT="$PLUGIN_ROOT/.claude"
     fi
 fi
 
@@ -130,10 +133,10 @@ echo ""
 # --- Step 0: Confirmation before installation ---
 step "[0/4] Checking items to be installed..."
 
-# Collect skills to install
+# Collect skills to install (from shared ops/skills)
 SKILLS_TO_INSTALL=""
 SKILL_COUNT=0
-for skill_dir in "$ASCEND_AGENT_ROOT/skills"/*/; do
+for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
     [ -d "$skill_dir" ] || continue
     name=$(basename "$skill_dir")
     echo "$INCLUDED_SKILLS" | grep -qw "$name" || continue
@@ -142,10 +145,10 @@ for skill_dir in "$ASCEND_AGENT_ROOT/skills"/*/; do
     SKILL_COUNT=$((SKILL_COUNT + 1))
 done
 
-# Collect agents to install
+# Collect agents to install (from local agents/)
 AGENTS_TO_INSTALL=""
 AGENT_COUNT=0
-for agent_entry in "$ASCEND_AGENT_ROOT/agents"/*; do
+for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
     [ -e "$agent_entry" ] || continue
     name=$(basename "$agent_entry")
     base="${name%.md}"
@@ -158,10 +161,10 @@ done
 echo ""
 echo -e "${BOLD}以下内容将被安装/替换：${NC}"
 echo ""
-echo -e "${CYAN}Skills (${SKILL_COUNT} 项)：${NC}"
+echo -e "${CYAN}Skills (${SKILL_COUNT} 项，来自共享 ops/skills)：${NC}"
 for name in $SKILLS_TO_INSTALL; do
     target="$CANNBOT_DIR/skills/$name"
-    src="$ASCEND_AGENT_ROOT/skills/$name"
+    src="$SHARED_SKILL_ROOT/$name"
     if [ -e "$target" ] || [ -L "$target" ]; then
         echo -e "  ${YELLOW}$name${NC} → 将被替换为软连接到 ${src}"
     else
@@ -171,10 +174,10 @@ for name in $SKILLS_TO_INSTALL; do
 done
 
 echo ""
-echo -e "${CYAN}Agents (${AGENT_COUNT} 项)：${NC}"
+echo -e "${CYAN}Agents (${AGENT_COUNT} 项，来自本地 agents/)：${NC}"
 for name in $AGENTS_TO_INSTALL; do
     target="$CANNBOT_DIR/agents/$name"
-    src="$ASCEND_AGENT_ROOT/agents/$name"
+    src="$LOCAL_AGENT_ROOT/$name"
     if [ -e "$target" ] || [ -L "$target" ]; then
         echo -e "  ${YELLOW}$name${NC} → 将被替换为软连接到 ${src}"
     else
@@ -190,7 +193,7 @@ if [ "$TOOL" = "opencode" ]; then
 else
     config_target="$CONFIG_ROOT/CLAUDE.md"
 fi
-config_src="$PROJECT_ROOT/AGENTS.md"
+config_src="$PLUGIN_ROOT/AGENTS.md"
 if [ -e "$config_target" ] || [ -L "$config_target" ]; then
     echo -e "  ${YELLOW}$(basename "$config_target")${NC} → 将被替换为软连接到 ${config_src}"
 else
@@ -221,10 +224,10 @@ mkdir -p "$CANNBOT_DIR"
 step1_summary=""
 step1_warns=""
 if [ "$TOOL" = "opencode" ]; then
-    # OpenCode: per-item symlinks for skills (whitelist filtered)
+    # OpenCode: per-item symlinks for skills (from shared ops/skills, whitelist filtered)
     mkdir -p "$CANNBOT_DIR/skills"
     # Pre-clean existing skill symlinks (only whitelist items)
-    for skill_dir in "$ASCEND_AGENT_ROOT/skills"/*/; do
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
         # Only clean skills that are in whitelist
@@ -233,7 +236,7 @@ if [ "$TOOL" = "opencode" ]; then
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
     skill_count=0
-    for skill_dir in "$ASCEND_AGENT_ROOT/skills"/*/; do
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
         # Check if skill is in whitelist (space-separated list)
@@ -244,10 +247,10 @@ if [ "$TOOL" = "opencode" ]; then
     done
     step1_summary="skills(${skill_count}) "
 
-    # OpenCode: per-item symlinks for agents (whitelist filtered)
+    # OpenCode: per-item symlinks for agents (from local agents/, whitelist filtered)
     mkdir -p "$CANNBOT_DIR/agents"
     # Pre-clean existing agent symlinks (only whitelist items)
-    for agent_entry in "$ASCEND_AGENT_ROOT/agents"/*; do
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
         base_name="${name%.md}"
@@ -257,7 +260,7 @@ if [ "$TOOL" = "opencode" ]; then
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
     agent_count=0
-    for agent_entry in "$ASCEND_AGENT_ROOT/agents"/*; do
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
         base_name="${name%.md}"
@@ -280,10 +283,10 @@ step "[2/4] Installing configuration..."
 mkdir -p "$CONFIG_ROOT"
 
 if [ "$TOOL" = "opencode" ]; then
-    ln -sf "$PROJECT_ROOT/AGENTS.md" "$CONFIG_ROOT/AGENTS.md"
+    ln -sf "$PLUGIN_ROOT/AGENTS.md" "$CONFIG_ROOT/AGENTS.md"
     ok "AGENTS.md"
 else
-    ln -sf "$PROJECT_ROOT/AGENTS.md" "$CONFIG_ROOT/CLAUDE.md"
+    ln -sf "$PLUGIN_ROOT/AGENTS.md" "$CONFIG_ROOT/CLAUDE.md"
     ok "CLAUDE.md"
 fi
 echo ""
@@ -292,15 +295,14 @@ echo ""
 step "[3/4] Configuring tool discovery..."
 
 if [ "$TOOL" = "opencode" ]; then
-    # OpenCode: skills/agents already at auto-scan paths, no extra discovery needed
+    # OpenCode: skills/ agents already at auto-scan paths, no extra discovery needed
     ok "Auto-scan: skills/, agents/"
 else
-    # Claude: create per-skill discovery symlinks (with filter)
-    SKILLS_SRC="$ASCEND_AGENT_ROOT/skills"
+    # Claude: create per-skill discovery symlinks (with filter, from shared ops/skills)
     DISCOVERY="$CONFIG_ROOT/skills"
 
     # Pre-clean existing skills (only whitelist items)
-    for skill_dir in "$SKILLS_SRC"/*/; do
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
         # Only clean skills that are in whitelist
@@ -310,7 +312,7 @@ else
     done
 
     link_count=0
-    for skill_dir in "$SKILLS_SRC"/*/; do
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
         # Check if skill is in whitelist (space-separated list)
@@ -329,12 +331,11 @@ else
 
     ok "Skills: $link_count discovery symlinks"
 
-    # Claude: also create agent discovery symlinks
-    AGENTS_SRC="$ASCEND_AGENT_ROOT/agents"
+    # Claude: also create agent discovery symlinks (from local agents/)
     AGENT_DISCOVERY="$CONFIG_ROOT/agents"
 
     # Pre-clean existing agents (only whitelist items)
-    for agent_entry in "$AGENTS_SRC"/*; do
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
         base="${name%.md}"
@@ -345,7 +346,7 @@ else
     done
 
     agent_link_count=0
-    for agent_entry in "$AGENTS_SRC"/*; do
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
         base="${name%.md}"
