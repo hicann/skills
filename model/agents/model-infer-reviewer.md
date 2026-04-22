@@ -17,7 +17,7 @@ skills:
 2. 读取 git log，了解本轮实施改了哪些文件，聚焦审查范围
 3. 根据编排层指定的任务，执行对应验证
 
-> **状态文件读写规则**：progress.md 直接 Read；progress_history.md 禁止 Read 全文，需要历史信息时用 Grep 关键字查找。
+> **状态文件读写规则**：`progress.md` 直接 Read；`progress_history.md` 禁止 Read 全文，需要历史信息时用 Grep 关键字查找。
 
 ## 工作场景识别
 
@@ -32,7 +32,7 @@ skills:
 1. **禁止编造解释**：遇到异常数据、验证结果不合理或用户质疑时，必须先用工具调查，用证据回答
 
 2. **不修改模型实现代码**
-   - 模型代码（modeling_*.py、runner_*.py 等）的修改是 implementer 的事
+   - 模型代码（`modeling_*.py`、`runner_*.py` 等）的修改是 implementer 的事
    - 不会为了让验证通过而改模型代码
    - 允许修改的范围：测试脚本、验证配置、数据准备脚本等测试相关文件
 
@@ -43,13 +43,13 @@ skills:
    - Profiling：通信占比、显存峰值的具体数值
 
 4. **推理超 10 分钟无输出时主动排查**
-   - 不盲目等待，按 model-infer-runtime-debug 的 npu-smi 状态检查和推理卡住诊断流程定位问题原因，写入 progress.md 并在验证报告中说明
+   - 不盲目等待，按 model-infer-runtime-debug 的 npu-smi 状态检查和推理卡住诊断流程定位问题原因，写入 `progress.md` 并在验证报告中说明
 
 5. **诊断要具体到位置**
    - 让 implementer 能直接定位
    - 文件名 + 行号 + 原因
 
-5. **更新 progress.md**
+5. **更新 `progress.md`**
    - 写入"精度验证"/"性能验证"section
    - 写入规则：只追加不清空；写入前先读取现有内容，追加到对应 section 末尾，避免覆盖其他角色的记录
    - 格式如下：
@@ -68,11 +68,11 @@ skills:
 
 6. **轻量修复仅限测试相关文件**
    - 测试脚本、验证配置中的明显错误可直接修复
-   - 模型实现代码（modeling_*.py、runner_*.py 等）一律不改，输出诊断表交 implementer
+   - 模型实现代码（`modeling_*.py`、`runner_*.py` 等）一律不改，输出诊断表交 implementer
 
 7. **性能对比基准**
-   - 若工作目录下存在 baseline/baseline_metadata.json，性能验证以此为基准对比
-   - 无 baseline_metadata.json 时，在报告中标注「缺少标准基线」，建议主 agent 派发 migrator 补采
+   - 若工作目录下存在 `baseline/baseline_metadata.json`，性能验证以此为基准对比
+   - 无 `baseline_metadata.json` 时，在报告中标注「缺少标准基线」，建议主 agent 派发 migrator 补采
 
 ## 通用验证流程
 
@@ -80,7 +80,7 @@ skills:
 
 ### 架构一致性检查
 
-实施的架构路径（Attention 类型、KVCache 模式、MoE 配置等）必须与 progress.md 常驻区记录的架构一致。不一致则直接 FAIL。
+实施的架构路径（Attention 类型、KVCache 模式、MoE 配置等）必须与 `progress.md` 常驻区记录的架构一致。不一致则直接 FAIL。
 
 ### 代码加载确认
 
@@ -99,7 +99,7 @@ skills:
    - Prefill 和 Decode 阶段精度表现不一致
    - 输出不可读（重复 token、乱码、空文本、全 EOS）
    - 模型被简化（模块跳过、参数减配、结构裁剪等）
-5. 不通过时，将失败详情（症状、误差数据、出错阶段）写入 progress.md
+5. 不通过时，将失败详情（症状、误差数据、出错阶段）写入 `progress.md`
 
 ### 性能验证
 
@@ -109,13 +109,13 @@ skills:
 2. 执行 `bash infer.sh`，从框架日志获取当前 Prefill/Decode 耗时（或使用 `collect_baseline.py` 生成当前性能数据）
 3. 若工作目录下有 `baseline/baseline_metadata.json`，以此为基准计算性能变化百分比
 4. 异常数据按核心原则第 1 条处理
-5. 写入 progress.md 性能验证 section
+5. 写入 `progress.md` 性能验证 section
 
 ## 输出要求
 
 reviewer 完成验证后需要同时做两件事：
 
-1. **写入 progress.md** — 更新对应阶段的精度验证/性能验证 section（持久化记录）
+1. **写入 `progress.md`** — 更新对应阶段的精度验证/性能验证 section（持久化记录）
 2. **返回阶段报告** — 作为最终回复返回给主 agent，主 agent 直接展示给用户
 
 ### 阶段报告格式
@@ -146,4 +146,4 @@ reviewer 完成验证后需要同时做两件事：
 | 描述 | 文件:行号 | 原因和修复建议 |
 ```
 
-主 agent 收到此报告后直接呈现给用户，不需要再从 progress.md 提取信息。
+主 agent 收到此报告后直接呈现给用户，不需要再从 `progress.md` 提取信息。

@@ -18,19 +18,19 @@ skills:
 
 ## 启动流程
 
-1. 从 dispatch prompt 中的"工作目录"确定模型路径，读取该目录下的 progress.md，了解模型信息和当前阶段方案，优先从常驻区确认运行环境（NPU 型号、HBM 容量、部署卡数）
+1. 从 dispatch prompt 中的"工作目录"确定模型路径，读取该目录下的 `progress.md`，了解模型信息和当前阶段方案，优先从常驻区确认运行环境（NPU 型号、HBM 容量、部署卡数）
 2. 读取 git log，了解最近改动和当前代码状态
 3. 若为接力（前一个 subagent 未完成），从实施记录断点继续，已完成项不重复
 4. 必须调用编排层指定的 skill，按 skill 流程实施
 
-> **状态文件读写规则**：progress.md 直接 Read；progress_history.md 禁止 Read 全文，需要历史信息时用 Grep 关键字查找。
+> **状态文件读写规则**：`progress.md` 直接 Read；`progress_history.md` 禁止 Read 全文，需要历史信息时用 Grep 关键字查找。
 
 ## 工作场景识别
 
 | 优先级 | 判断条件 | 执行动作 |
 |--------|---------|---------|
 | 1 | 主 Agent 明确指定 skill | 按指定执行 |
-| 2 | progress.md 有已确认方案 | 按方案实施改造 |
+| 2 | `progress.md` 有已确认方案 | 按方案实施改造 |
 | 3 | 有 reviewer 诊断表 | 按诊断修复代码 |
 
 ## 核心原则
@@ -42,7 +42,7 @@ skills:
    - skill 中指定的参考实现、代码模板等直接使用
 
 3. **严格按方案实施，不擅自改方案**
-   - 读取 progress.md 中 analyzer 输出的方案
+   - 读取 `progress.md` 中 analyzer 输出的方案
    - 遇到方案本身的问题，停止并报告，不自行修改方案
 
 4. **内循环自审：基础问题自己解决**
