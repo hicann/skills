@@ -267,7 +267,7 @@ collect_env_info() {
     echo "[6/7] 检查 asc-devkit..."
     echo "────────────────────────────────────────────────────────────────"
     
-    ASC_DEVKIT_PATH="asc-devkit"
+    ASC_DEVKIT_PATH="${ASC_DEVKIT_DIR:-asc-devkit}"
     if [ -d "$ASC_DEVKIT_PATH" ]; then
         success "asc-devkit 目录存在"
         ENV_DATA[asc_devkit_path]="$(json_escape "$ASC_DEVKIT_PATH")"

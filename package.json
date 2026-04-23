@@ -2,5 +2,11 @@
   "name": "cannbot",
   "version": "1.0.0",
   "type": "module",
-  "main": ".opencode/plugins/cannbot.js"
+  "main": ".opencode/plugins/cannbot.js",
+  "files": [
+    ".opencode/plugins/cannbot.js",
+    "ops/agents",
+    "ops/skills",
+    "ops/teams"
+  ]
 }

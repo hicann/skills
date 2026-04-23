@@ -20,6 +20,14 @@ if [ ! -d "$ASC_DEVKIT_DIR" ]; then
   fi
 fi
 
+# --- Step 1.5: Export ASC_DEVKIT_DIR for Bash tool invocations ---
+# Claude Code sources $CLAUDE_ENV_FILE before every Bash command, so this
+# makes `$ASC_DEVKIT_DIR` usable in LLM-issued shell commands without needing
+# any cwd symlink.
+if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -d "$ASC_DEVKIT_DIR" ]; then
+  printf 'export ASC_DEVKIT_DIR=%q\n' "$ASC_DEVKIT_DIR" >> "$CLAUDE_ENV_FILE"
+fi
+
 # --- Step 2: Build session context ---
 AGENTS_MD="${PLUGIN_ROOT}/AGENTS.md"
 if [ ! -f "$AGENTS_MD" ]; then

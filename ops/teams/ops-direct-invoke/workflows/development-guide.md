@@ -288,8 +288,8 @@ python workflows/scripts/verify_cmake_config.py operators/{operator_name}/CMakeL
 | 资源类型 | 路径 | 说明 |
 |---------|------|------|
 | API 文档 | `asc-devkit/docs/api/context/` | 约 1022 个 API 文档 |
-| 高性能模板 | `find asc-devkit/examples/ -path "*/01_add/basic_api_memory_allocator_add"` | 双缓冲+流水线 |
-| 各类示例 | `find asc-devkit/examples/ -type d -name "00_introduction"` | 加法、减法、多输入等 |
-| 调试示例 | `find asc-devkit/examples/ -name "printf.asc"` | printf 调试方法 |
+| 高性能模板 | `find "$ASC_DEVKIT_DIR"/examples/ -path "*/01_add/basic_api_memory_allocator_add"` | 双缓冲+流水线 |
+| 各类示例 | `find "$ASC_DEVKIT_DIR"/examples/ -type d -name "00_introduction"` | 加法、减法、多输入等 |
+| 调试示例 | `find "$ASC_DEVKIT_DIR"/examples/ -name "printf.asc"` | printf 调试方法 |
 | 设计模板 | `workflows/templates/design-template.md` | 设计文档模板（Architect 用） |
 | 工程模板 | `/ascendc-direct-invoke-template` skill | Kernel 直调工程模板（Developer 用） |

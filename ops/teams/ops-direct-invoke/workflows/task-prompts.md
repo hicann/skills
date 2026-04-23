@@ -57,7 +57,7 @@
 【API 验证规则】
 验证 API 是否存在时，禁止只读单个文件（如 ReduceMax.md）就下结论。
 必须用通配符搜索所有变体：
-  ls asc-devkit/docs/api/context/ | grep -i "^{APIName}"
+  ls "$ASC_DEVKIT_DIR"/docs/api/context/ | grep -i "^{APIName}"
 同一 API 可能有多个文件（如 ReduceMax.md / ReduceMax-35.md / ReduceMax-92.md），功能不同。
 
 【验收标准】
