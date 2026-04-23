@@ -289,26 +289,26 @@ skills/
 
 ### Ascend C 算子开发
 
-| Skill | 功能 |
-|-------|------|
-| **ascendc-api-best-practices** | API 使用最佳实践、参数限制 |
-| **ascendc-npu-arch** | NPU 架构知识、芯片型号映射 |
-| **ascendc-docs-search** | API 文档索引 + 在线搜索 |
-| **ascendc-env-check** | NPU 设备查询、CANN 环境验证 |
-| **ascendc-tiling-design** | Tiling和Kernel 设计方法论，按算子类别分类 |
-| **ascendc-precision-debug** | 精度调试，症状-原因速查、常见陷阱 |
-| **ascendc-runtime-debug** | 运行时错误调试，错误码解析、Kernel 挂起排查 |
-| **ascendc-ut-develop** | UT 单元测试用例开发与覆盖率增强 |
-| **ascendc-st-design** | aclnn 接口测试用例设计、L0 / L1 测试用例生成 |
-| **ascendc-code-review** | 代码检视方法论、5 大类别规范 |
-| **ascendc-task-focus** | 任务聚焦，解决长任务“迷失在中间”的问题 |
-| **ascendc-whitebox-design** | 白盒测试用例设计与生成 |
-| **ascendc-registry-invoke-to-direct-invoke** | 注册调用算子转 `<<<>>>` kernel 直调 |
-| **ascendc-direct-invoke-template** | Kernel 直调工程模板，提供验证过的样例工程和修改指南 |
-| **ops-profiling** | NPU 性能采集与分析，CSV 指标解读、瓶颈定位、优化建议 |
-| **ops-precision-standard** | 算子精度标准，按 dtype 分类提供 atol/rtol 精度比对标准 |
-| **ascendc-docs-gen** | 算子文档写作参考，支持需求分析、详细设计等多个标准模版 |
-| **cann-simulator** | NPU 仿真器技能。提供 CANN Simulator 的使用指导，包括精度仿真、性能仿真、流水线分析。 |
+| Skill | 功能 | 使用样例 |
+|-------|------|---------|
+| **ascendc-api-best-practices** | API 使用最佳实践、参数限制 | — |
+| **ascendc-npu-arch** | NPU 架构知识、芯片型号映射 | — |
+| **ascendc-docs-search** | API 文档索引 + 在线搜索 | — |
+| **ascendc-env-check** | NPU 设备查询、CANN 环境验证 | — |
+| **ascendc-tiling-design** | Tiling和Kernel 设计方法论，按算子类别分类 | — |
+| **ascendc-precision-debug** | 精度调试，症状-原因速查、常见陷阱 | — |
+| **ascendc-runtime-debug** | 运行时错误调试，错误码解析、Kernel 挂起排查 | — |
+| **ascendc-ut-develop** | UT 单元测试用例开发与覆盖率增强 | — |
+| **ascendc-st-design** | aclnn 接口测试用例设计、L0 / L1 测试用例生成 | — |
+| **ascendc-code-review** | 代码检视方法论、5 大类别规范 | — |
+| **ascendc-task-focus** | 任务聚焦，解决长任务“迷失在中间”的问题 | — |
+| **ascendc-whitebox-design** | 白盒测试用例设计与生成 | — |
+| **ascendc-registry-invoke-to-direct-invoke** | 注册调用算子转 `<<<>>>` kernel 直调 | [查看](docs/skills-usage.md#ascendc-registry-invoke-to-direct-invoke) |
+| **ascendc-direct-invoke-template** | Kernel 直调工程模板，提供验证过的样例工程和修改指南 | — |
+| **ops-profiling** | NPU 性能采集与分析，CSV 指标解读、瓶颈定位、优化建议 | — |
+| **ops-precision-standard** | 算子精度标准，按 dtype 分类提供 atol/rtol 精度比对标准 | — |
+| **ascendc-docs-gen** | 算子文档写作参考，支持需求分析、详细设计等多个标准模版 | — |
+| **cann-simulator** | NPU 仿真器技能。提供 CANN Simulator 的使用指导，包括精度仿真、性能仿真、流水线分析。 | — |
 
 ### PyPTO 算子开发
 
