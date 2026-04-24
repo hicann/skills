@@ -14,6 +14,7 @@ description: Ascend C API 使用最佳实践。提供算术、归约、数据搬
 | **算术运算** | Add, Sub, Mul, Div, Adds, Muls | [api-arithmetic.md](references/api-arithmetic.md) | Softmax, LayerNorm, 广播优化 |
 | **归约操作** | ReduceMax, ReduceSum | [api-reduce.md](references/api-reduce.md), [api-reduce-pattern.md](references/api-reduce-pattern.md) | Softmax, LayerNorm, ReduceMean |
 | **数据搬运** | DataCopy, DataCopyPad | [api-datacopy.md](references/api-datacopy.md) | 非对齐处理、多维搬运 |
+| **Transpose / 重排** | TransDataTo5HD, Gather | [api-transpose.md](references/api-transpose.md) | 小通道 transpose、permute |
 | **Buffer 管理** | TBuf, TQue | [api-buffer.md](references/api-buffer.md) | Double Buffer、内存规划 |
 | **精度转换** | Cast | [api-precision.md](references/api-precision.md) | FP16/FP32 混合精度 |
 | **流水线同步** | EnQue, DeQue, SetFlag | [api-pipeline.md](references/api-pipeline.md) | 多级流水线、事件同步 |

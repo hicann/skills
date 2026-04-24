@@ -12,7 +12,7 @@ description: Ascend C 算子 Tiling 设计指南。提供算子分类体系和 T
 | **Reduction 归约类** | 沿轴归约（含索引跟踪变体） | ReduceSum, Softmax, LayerNorm, ArgMax | ✅ [场景路由](references/reduction/patterns.md)（⚠️ 必须先读） / [算法](references/reduction/algorithms.md) |
 | **Elementwise 逐元素类** | 输入输出Shape相同，逐元素独立计算 | Sin, Cos, Abs, Exp | ✅ [场景路由](references/elewise/patterns.md)（⚠️ 必须先读） |
 | Broadcast 广播类 | 输入Shape不同，需广播对齐 | Add, Mul, Sub | ✅ [场景路由](references/broadcast/patterns.md)（⚠️ 必须先读） |
-| Conversion 数据转换类 | 改变布局/形状，合并/拆分张量 | Transpose, Concat, Split | 📋 规划中 |
+| Conversion 数据转换类 | 改变布局/形状，合并/拆分张量 | Transpose, Concat, Split | ⚠️ [场景路由](references/conversion/patterns.md)（当前仅 Transpose 部分支持） |
 | Random 随机类 | 生成随机数，需种子管理 | RandomUniform, Dropout | 📋 规划中 |
 | MatMul 矩阵乘类 | 矩阵乘法，高计算密度，用Cube单元 | MatMul, BatchMatMul | 📋 规划中 |
 | Convolution 卷积类 | 空间卷积，滑动窗口计算 | Conv2D, DepthwiseConv | 📋 规划中 |
