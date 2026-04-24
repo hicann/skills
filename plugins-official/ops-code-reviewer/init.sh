@@ -188,13 +188,28 @@ done
 
 echo ""
 echo -e "${CYAN}配置文件：${NC}"
-if [ "$TOOL" = "opencode" ]; then
-    config_target="$CONFIG_ROOT/AGENTS.md"
+if [ "$LEVEL" = "project" ]; then
+    # Project-level: config file should be in current directory (PWD)
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$PWD/AGENTS.md"
+    else
+        config_target="$PWD/CLAUDE.md"
+    fi
 else
-    config_target="$CONFIG_ROOT/CLAUDE.md"
+    # Global-level: config file in CONFIG_ROOT
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$CONFIG_ROOT/AGENTS.md"
+    else
+        config_target="$CONFIG_ROOT/CLAUDE.md"
+    fi
 fi
 config_src="$PLUGIN_ROOT/AGENTS.md"
-if [ -e "$config_target" ] || [ -L "$config_target" ]; then
+# Skip only when source file is already at target location (same filename and same directory)
+# This only happens for OpenCode project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
+# For Claude, source is AGENTS.md but target is CLAUDE.md, so always need symlink
+if [ "$TOOL" = "opencode" ] && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
+    echo -e "  ${GREEN}$(basename "$config_target")${NC} → 已存在于当前目录，无需创建软链接"
+elif [ -e "$config_target" ] || [ -L "$config_target" ]; then
     echo -e "  ${YELLOW}$(basename "$config_target")${NC} → 将被替换为软连接到 ${config_src}"
 else
     echo -e "  ${GREEN}$(basename "$config_target")${NC} → 将创建软连接到 ${config_src}"
@@ -280,14 +295,35 @@ echo ""
 
 # --- Step 2: Install config file (AGENTS.md / CLAUDE.md) ---
 step "[2/4] Installing configuration..."
-mkdir -p "$CONFIG_ROOT"
 
-if [ "$TOOL" = "opencode" ]; then
-    ln -sf "$PLUGIN_ROOT/AGENTS.md" "$CONFIG_ROOT/AGENTS.md"
-    ok "AGENTS.md"
+# Determine target path for config file
+if [ "$LEVEL" = "project" ]; then
+    # Project-level: config file should be in current directory (PWD)
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$PWD/AGENTS.md"
+    else
+        config_target="$PWD/CLAUDE.md"
+    fi
 else
-    ln -sf "$PLUGIN_ROOT/AGENTS.md" "$CONFIG_ROOT/CLAUDE.md"
-    ok "CLAUDE.md"
+    # Global-level: config file in CONFIG_ROOT
+    mkdir -p "$CONFIG_ROOT"
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$CONFIG_ROOT/AGENTS.md"
+    else
+        config_target="$CONFIG_ROOT/CLAUDE.md"
+    fi
+fi
+
+config_src="$PLUGIN_ROOT/AGENTS.md"
+
+# Skip only when source file is already at target location (same filename and same directory)
+# This only happens for OpenCode project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
+# For Claude, source is AGENTS.md but target is CLAUDE.md, so always need symlink
+if [ "$TOOL" = "opencode" ] && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
+    ok "$(basename "$config_target") already in current directory"
+else
+    ln -sf "$config_src" "$config_target"
+    ok "$(basename "$config_target")"
 fi
 echo ""
 
@@ -383,10 +419,20 @@ for sub in skills agents; do
 done
 
 # Check config file
-if [ "$TOOL" = "opencode" ]; then
-  [ -f "$CONFIG_ROOT/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing"; health_ok=false; }
+if [ "$LEVEL" = "project" ]; then
+    # Project-level: config file is in current directory (PWD)
+    if [ "$TOOL" = "opencode" ]; then
+        [ -f "$PWD/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing in current directory"; health_ok=false; }
+    else
+        [ -f "$PWD/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing in current directory"; health_ok=false; }
+    fi
 else
-  [ -f "$CONFIG_ROOT/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing"; health_ok=false; }
+    # Global-level: config file in CONFIG_ROOT
+    if [ "$TOOL" = "opencode" ]; then
+        [ -f "$CONFIG_ROOT/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing"; health_ok=false; }
+    else
+        [ -f "$CONFIG_ROOT/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing"; health_ok=false; }
+    fi
 fi
 
 # Generate brand manifest
