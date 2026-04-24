@@ -87,23 +87,23 @@ Fetch and follow instructions from https://gitcode.com/cann/skills/blob/.opencod
 
 ```bash
 git clone https://gitcode.com/cann/skills.git
-cd skills/ops/teams/ops-direct-invoke
+cd skills/plugins-official/ops-direct-invoke
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
 ```
 
-详细说明见 [ops/teams/ops-direct-invoke/quickstart.md](ops/teams/ops-direct-invoke/quickstart.md)。
+详细说明见 [plugins-official/ops-direct-invoke/quickstart.md](plugins-official/ops-direct-invoke/quickstart.md)。
 
 **PyPTO 算子开发**
 
 ```bash
 git clone https://gitcode.com/cann/skills.git
-cd skills/ops/teams/pypto-op-orchestrator
+cd skills/plugins-official/pypto-op-orchestrator
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
 ```
 
-详细说明见 [ops/teams/pypto-op-orchestrator/quickstart.md](ops/teams/pypto-op-orchestrator/quickstart.md)。
+详细说明见 [plugins-official/pypto-op-orchestrator/quickstart.md](plugins-official/pypto-op-orchestrator/quickstart.md)。
 
 **NPU 模型推理优化**
 

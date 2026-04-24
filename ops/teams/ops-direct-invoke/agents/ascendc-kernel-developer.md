@@ -1,1 +1,0 @@
-../../../agents/ascendc-kernel-developer.md

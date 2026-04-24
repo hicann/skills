@@ -499,7 +499,7 @@ get_all_skills_with_paths() {
     local tmpfile
     tmpfile=$(mktemp)
     # Prune teams/ so nested team SKILL.md files (e.g.
-    # ops/teams/ops-registry-invoke/workflow/SKILL.md) are not mistakenly
+    # plugins-official/ops-registry-invoke/workflow/SKILL.md) are not mistakenly
     # discovered as top-level skills.
     find "$SKILLS_DIR" \
         \( -name "node_modules" -o -name ".git" -o -name "teams" \) -prune -o \
@@ -1051,7 +1051,7 @@ VERSION_STATE_DIR="$TESTS_DIR/.version-state"
 # Returns: full path to plugin.json
 get_team_plugin_json() {
     local team_name="$1"
-    local plugin_path="$SKILLS_DIR/ops/teams/$team_name/.claude-plugin/plugin.json"
+    local plugin_path="$SKILLS_DIR/plugins-official/$team_name/.claude-plugin/plugin.json"
     if [ -f "$plugin_path" ]; then
         echo "$plugin_path"
     else

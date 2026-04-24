@@ -214,7 +214,7 @@ skills:
 3. 验收阶段 - 精度验收 → 性能验收
 4. 上库阶段 - 代码检视 → 开发总结
 
-> 详细配置见 `ops/teams/ops-direct-invoke/AGENTS.md`
+> 详细配置见 `plugins-official/ops-direct-invoke/AGENTS.md`
 
 ---
 

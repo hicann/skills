@@ -79,14 +79,14 @@ git clone https://gitcode.com/cann/skills.git ~/.config/opencode/cannbot
 **Ascend C Kernel direct-invoke**:
 
 ```bash
-cd ~/.config/opencode/cannbot/ops/teams/ops-direct-invoke
+cd ~/.config/opencode/cannbot/plugins-official/ops-direct-invoke
 bash init.sh global opencode
 ```
 
 **PyPTO operator development**:
 
 ```bash
-cd ~/.config/opencode/cannbot/ops/teams/pypto-op-orchestrator
+cd ~/.config/opencode/cannbot/plugins-official/pypto-op-orchestrator
 bash init.sh global opencode
 ```
 
@@ -124,7 +124,7 @@ opencode plugin cannbot@git+https://gitcode.com/cann/skills.git -f
 
 ```bash
 cd ~/.config/opencode/cannbot && git pull
-cd ops/teams/ops-direct-invoke && bash init.sh global opencode
+cd plugins-official/ops-direct-invoke && bash init.sh global opencode
 ```
 
 ## Troubleshooting
@@ -142,7 +142,7 @@ cd ops/teams/ops-direct-invoke && bash init.sh global opencode
 The asc-devkit is cloned automatically on first use. If it fails:
 
 ```bash
-cd <cannbot-root>/ops/teams/ops-direct-invoke
+cd <cannbot-root>/plugins-official/ops-direct-invoke
 git clone https://gitcode.com/cann/asc-devkit.git asc-devkit
 ```
 

@@ -7,6 +7,6 @@
     ".opencode/plugins/cannbot.js",
     "ops/agents",
     "ops/skills",
-    "ops/teams"
+    "plugins-official"
   ]
 }

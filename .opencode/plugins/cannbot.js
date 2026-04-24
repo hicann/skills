@@ -26,7 +26,7 @@ const execFileAsync = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
-const TEAMS_DIR = path.join(REPO_ROOT, 'ops/teams');
+const TEAMS_DIR = path.join(REPO_ROOT, 'plugins-official');
 const SHARED_AGENTS_DIR = path.join(REPO_ROOT, 'ops/agents');
 const SHARED_SKILLS_DIR = path.join(REPO_ROOT, 'ops/skills');
 
