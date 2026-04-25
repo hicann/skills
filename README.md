@@ -406,5 +406,5 @@ skills/
 通过GitCode[【讨论】](https://gitcode.com/cann/skills/discussions)参与交流。
    
 ### 微信群
-![](./docs/contact-us.jpg)
+![](./docs/contact.jpg)
 
