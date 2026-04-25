@@ -122,6 +122,8 @@ ACLNN_ERR_INNER_TILING_ERROR
 ACLNN_ERR_INNER_FIND_KERNEL_ERROR
     │
     └─ Kernel 查找失败
+        ├─ 检查 TilingKey/SEL 匹配 → [kernel_binary_debug.md](kernel_binary_debug.md#流程2tilingkey--sel-不匹配)
+        ├─ 检查 SEL dtype 条目 → [kernel_binary_debug.md](kernel_binary_debug.md#流程3sel-dtype-条目缺失)
         │
         ├─ 检查算子是否已安装
         │   ├─ ls $ASCEND_OPP_PATH/vendors/<vendor_name>/op_impl/ai_core/tbe/op_api/lib/
@@ -140,6 +142,8 @@ ACLNN_ERR_INNER_FIND_KERNEL_ERROR
         │
         ├─ 检查输入类型匹配
         │   └─ 输入类型和信息库不匹配 → 检查 dtype/shape 是否在{op_name}_def.cpp原型库支持范围内
+        │
+        ├─ 检查多版本 vendor 包冲突 → [kernel_binary_debug.md](kernel_binary_debug.md#流程4多版本-vendor-包冲突)
         │
         └─ 检查环境变量
             ├─ export ASCEND_OPP_PATH=/path/to/opp
@@ -250,6 +254,106 @@ gdb <executable> <core_file>
 - **空指针解引用**：检查 tensor 是否为 nullptr
 - **内存越界**：检查 DataCopy 长度、GM/UB 访问范围
 - **栈溢出**：检查递归深度或大数组
+
+### 507035 向量核异常
+
+```
+错误码: 507035
+官方宏名: ACL_ERROR_RT_VECTOR_CORE_EXCEPTION
+错误信息: 向量核异常 (vector core exception)
+来源: NPU 硬件/驱动层
+机制: 向量核执行期间发生硬件异常，通过 aclrtStreamSynchronize() 报告给 Host
+注意: 不要与 507046 (ACL_ERROR_RT_STREAM_SYNC_TIMEOUT) 混淆
+```
+
+#### 根因分类
+
+507035 是向量核硬件异常信号，按历史经验置信度从高到低排列：
+
+```
+507035 向量核异常
+    │
+    ├─ 高置信度
+    │   └─ DataCopyPad 参数非 32B 对齐
+    │       ├─ blockLen 非 32B 对齐 → 向上对齐到 32 字节倍数
+    │       ├─ xRow 偏移量非 32B 对齐 → 确保起始地址 32B 对齐
+    │       └─ 动态 chunk 大小非 32B 对齐 → Host 侧对齐计算
+    │
+    ├─ 中置信度
+    │   └─ UB 溢出 / Buffer 冲突
+    │       ├─ tmpBuf 大小不足 → 使用 GetReduceMaxMaxMinTmpSize API
+    │       ├─ 动态 UB 预算计算有误 → 验证 allBufSize < UB_LIMIT
+    │       └─ Buffer 越界覆盖 → 检查 AllocTensor/FreeTensor 配对
+    │
+    ├─ 低置信度
+    │   └─ DataCopyPad 读取越界
+    │       ├─ srcStride 或 xRow 超 GM buffer 范围 → 检查地址计算
+    │       └─ 高维 shape 下 offset 计算超出实际 GM 分配 → 验证 GM 大小
+    │
+    └─ 极低置信度
+        └─ 其他 DMA 异常
+            ├─ 多核并发写冲突 → 检查 workspace 分配
+            ├─ 硬件资源耗尽 → 减少 block_dim
+            └─ 编译优化问题 → 清理编译缓存后重试
+```
+
+#### 诊断步骤
+
+**Step 1: 缩小范围**
+
+```bash
+# 仅测试最小可复现用例
+# 仅测试 32B 对齐的简单 shape (如 2D with innerDim=16/32/64)
+# 仅测试 FP32（排除 dtype 因素）
+```
+
+**Step 2: 检查 DataCopyPad 参数**
+
+```cpp
+// DataCopyPad 的 blockLen 必须 32B 对齐
+// FP16/BF16: blockLen 必须是 16 的倍数 (16*2=32B)
+// FP32: blockLen 必须是 8 的倍数 (8*4=32B)
+
+// ❌ 错误：blockLen=9 for FP32 → 9*4=36B，非 32B 对齐
+DataCopyPad(dst, src, {1, 1, static_cast<uint32_t>(innerDim), 0});
+
+// ✅ 正确：blockLen 向上对齐到 32B 倍数
+uint32_t alignElements = (32 / sizeof(dtype));
+uint32_t alignedBlockLen = ((innerDim + alignElements - 1) / alignElements) * alignElements;
+DataCopyPad(dst, src, {1, 1, alignedBlockLen, 0});
+```
+
+**Step 3: 检查 UB 子张量偏移**
+
+```cpp
+// 所有 Get<T>(offset) 或 tensor[N] 创建的 UB 子张量，
+// 其字节偏移必须是 32B 对齐
+
+// ❌ 错误：chunkA0=8 (FP16), r=1 → 偏移 8*2=16B，非 32B 对齐
+auto row = hBuf[r * chunkA0_];
+
+// ✅ 正确：Host 侧将 chunkA0 对齐到 32B 边界
+// FP16/BF16: alignElements = 32/2 = 16
+// FP32: alignElements = 32/4 = 8
+chunkA0_ = ((chunkA0_ + alignElements - 1) / alignElements) * alignElements;
+```
+
+**Step 4: 临时验证 - 强制 Scale up tileRows**
+
+```cpp
+// 如果怀疑 chunk size 太小导致分配碎片，可以临时减少 tileRows
+// 若减少 tileRows 后 507035 消失 → 确认 chunk 对齐问题
+uint32_t testTileRows = 1;  // 最小测试
+```
+
+#### 内置检查清单
+
+遇到 507035 时按顺序检查：
+1. [ ] DataCopyPad 的 blockLen 是 32B 的倍数吗？
+2. [ ] UB 子张量 `Get(offset)` 的 offset * sizeof(T) 是 32B 的倍数吗？
+3. [ ] 动态 chunk 大小 (chunkA0, tileRows 等) 的对齐计算在 Host 侧做了吗？
+4. [ ] tmpBuf 大小是否使用了官方 API (`GetReduceMaxMaxMinTmpSize`) 而非手动估算？
+5. [ ] 总 UB 使用量 < UB 容量限制吗？
 
 ### 流程4：环境检查
 

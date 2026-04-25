@@ -16,6 +16,16 @@
 | ACLNN_ERR_PARAM_INVALID | 161002 | 参数校验错误，如输入的两个数据类型不满足输入类型推导关系 |
 | ACLNN_ERR_RUNTIME_ERROR | 361001 | API内部调用npu runtime的接口异常 |
 
+## NPU 运行时错误码（5xxxxx）
+
+以下错误码由 NPU 硬件/驱动层产生，非 aclnn 框架错误码，通过 aclGetRecentErrMsg() 或 plog 日志查看。
+
+| 错误码值 | 错误信息 | 说明 |
+|---------|---------|------|
+| 507035 | 向量核异常 (vector core exception) | NPU 向量核执行异常，通常由 DMA 对齐错误 / UB 溢出触发。通过 `aclrtStreamSynchronize()` 报告给用户 |
+
+> 507035 排查详见 [debug_workflow.md#507035-向量核异常](debug_workflow.md#507035-向量核异常)
+
 ## 内部异常状态码（561xxx）
 
 ### 核心错误
