@@ -160,6 +160,14 @@ factors:
   target: "grid.shape"
   expression: "sources[0][:3] + [2]"
   description: "grid.shape最后一维度固定为2"
+
+# 多shape广播结果计算
+- id: "SHAPE-007"
+  type: calculate
+  sources: ["self.shape", "other.shape", "beta.shape"]
+  target: "out.shape"
+  expression: "get_broadcast_result(sources[0], sources[1], sources[2])"
+  description: "out.shape是self、other、beta广播后的shape"
 ```
 
 ### 3.2 指定维度广播 (broadcast_dim)
@@ -254,7 +262,7 @@ factors:
   description: "beta类型需要可转换成self类型"
 ```
 
-### 3.8 链式依赖约束 (inferable_filter)
+### 3.8 链式推导约束 (inferable_filter)
 
 用于多 Tensor 类型互推导的链式求解场景。选择一个锚点独立采样，其他因子逐层推导：
 
@@ -280,22 +288,23 @@ factors:
 ```
 
 ### 3.9 可推导约束 (inferable)
+用于Tensor-Tensor、Tensor-Scalar类型互推导的链式求解场景。
 
 ```yaml
 # Tensor-Tensor 推导（默认模式）
 - id: "C012"
   type: inferable
   mode: tensor_tensor
-  sources: ["batch1.dtype", "batch2.dtype"]
-  target: "self.dtype"
+  sources: ["batch1.dtype"]
+  target: "batch2.dtype"          # 推导结果赋值给目标
   description: "batch1和batch2类型需要可相互推导"
 
 # Tensor-Scalar 推导
 - id: "C013"
   type: inferable
-  mode: tensor_scalar
-  sources: ["input.dtype", "scalar.dtype"]
-  target: "out.dtype"
+  mode: tensor_scalar            # Tensor-Scalar 模式
+  sources: ["input.dtype"]  # 第一个为Tensor类型，第二个为Scalar类型
+  target: "scalar.dtype"
   description: "Tensor和Scalar类型推导"
 ```
 

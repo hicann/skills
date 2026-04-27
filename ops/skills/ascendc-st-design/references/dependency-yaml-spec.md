@@ -249,6 +249,7 @@ constraints:
 - **等值计算**：`expression: "sources[0]"`
 - **公式计算**：`expression: "sources[0][1] * sources[1][2]"`
 - **固定维度**：`expression: "sources[0][:3] + [2]"`（自引用修改某一维度）
+- **多shape广播结果**：`expression: "get_broadcast_result(sources[0], sources[1])"`（计算两个shape广播后的结果shape）
 
 ```yaml
 # 等值计算
@@ -274,6 +275,14 @@ constraints:
   target: "grid.shape"
   expression: "sources[0][:3] + [2]"  # 取前3维，添加固定值 2
   description: "grid.shape最后一维度固定为2"
+
+# 多shape广播结果计算
+- id: "SHAPE-007"
+  type: calculate
+  sources: ["self.shape", "other.shape", "beta.shape"]
+  target: "out.shape"
+  expression: "get_broadcast_result(sources[0], sources[1], sources[2])"
+  description: "out.shape是self、other、beta广播后的shape"
 ```
 
 ### 3. 指定维度广播约束 (broadcast_dim)
@@ -384,6 +393,7 @@ constraints:
 ### 5. 条件约束 (conditional)
 
 **语义**：当条件满足时，应用特定约束。
+
 
 ```yaml
 - id: "C007"
@@ -500,16 +510,10 @@ constraints:
 
 **链式依赖设计模式**：
 
-对于三个Tensor类型的互推导约束，采用链式依赖：
+对于多个Tensor类型的互推导约束，采用链式依赖：
 
 ```yaml
-# 原约束（多变量互推导，不推荐）
-- id: "C-TYPE-001"
-  type: inferable
-  mode: tensor_tensor
-  sources: ["batch1.dtype", "batch2.dtype", "self.dtype"]
-  description: "三个Tensor类型需满足互推导关系"
-
+# 三个Tensor类型的互推导约束
 # 链式依赖（推荐）
 # Step 1: 选择锚点（Level 0 独立采样）
 # batch1.dtype 作为锚点
@@ -556,17 +560,17 @@ constraints:
 # Tensor-Tensor 推导（默认模式）
 - id: "C012"
   type: inferable
-  mode: tensor_tensor            # 可选，默认为 tensor_tensor
-  sources: ["batch1.dtype", "batch2.dtype"]
-  target: "self.dtype"           # 可选：推导结果赋值给目标
+  mode: tensor_tensor
+  sources: ["batch1.dtype"]
+  target: "batch2.dtype"          # 推导结果赋值给目标
   description: "batch1和batch2类型需要可相互推导"
 
 # Tensor-Scalar 推导
 - id: "C013"
   type: inferable
   mode: tensor_scalar            # Tensor-Scalar 模式
-  sources: ["input.dtype", "scalar.dtype"]  # 第一个为Tensor类型，第二个为Scalar类型
-  target: "out.dtype"
+  sources: ["input.dtype"]  # 第一个为Tensor类型，第二个为Scalar类型
+  target: "scalar.dtype"
   description: "Tensor和Scalar类型推导"
 ```
 ---

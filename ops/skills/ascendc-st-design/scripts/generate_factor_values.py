@@ -50,6 +50,7 @@ try:
         INTEGER_DTYPES,
         generate_broadcast_shapes,
         generate_unidirectional_broadcast_shapes,
+        get_broadcast_result,
         MAX_SHAPE_PRODUCT
     )
 except ImportError:
@@ -67,6 +68,7 @@ except ImportError:
         INTEGER_DTYPES,
         generate_broadcast_shapes,
         generate_unidirectional_broadcast_shapes,
+        get_broadcast_result,
         MAX_SHAPE_PRODUCT
     )
 
@@ -157,6 +159,9 @@ class FactorValueGenerator:
         exact_key = f'{param_name}.{attr}'
         if exact_key in factors:
             return factors[exact_key]
+        
+        if attr == 'value':
+            return []
         
         for key in factors:
             if key.startswith(f'{param_name}.{attr}_'):
@@ -290,7 +295,10 @@ class FactorValueGenerator:
                 )
                 if result is not None:
                     return result
-                return eval(expression, {'sources': source_values})
+                return eval(expression, {
+                    'sources': source_values,
+                    'get_broadcast_result': lambda *shapes: get_broadcast_result(list(shapes)),
+                })
             except:
                 return None
         
@@ -352,8 +360,16 @@ class FactorValueGenerator:
             param_name = target.split('.')[0]
             value_ranges = self.get_value_range_for_dtype(param_name, dtype)
             if value_ranges:
+                random.seed(seed)
                 return random.choice(value_ranges)
             return None
+        
+        # === 通用推导：value from value_range ===
+        if expression.startswith('derive_value_from_range'):
+            value_range = source_values[0]
+            param_name = target.split('.')[0]
+            dtype_value = context.get(f'{param_name}.dtype', 'float32')
+            return self._derive_scalar_value(value_range, dtype_value, seed)
         
         # === (1) aclTensorList 专属推导 ===
         if param_type == 'aclTensorList':
@@ -363,6 +379,17 @@ class FactorValueGenerator:
             if expression.startswith('derive_shape_list_from_length_and_dimensions'):
                 return self._derive_shape_list(source_values[0], source_values[1], seed)
         
+        # === 通用推导：多shape广播结果计算 ===
+        if expression.startswith('get_broadcast_result'):
+            shapes = [v for v in source_values if isinstance(v, list)]
+            if len(shapes) >= 2:
+                result = get_broadcast_result(shapes[:2])
+                if result is not None:
+                    return result
+            elif len(shapes) == 1:
+                return shapes[0]
+            return None
+
         # === (2) Array 类型专属推导 ===
         if param_type in self.ARRAY_TYPES:
             if expression.startswith('derive_length_from_length_ranges'):
@@ -374,12 +401,24 @@ class FactorValueGenerator:
                     context, target, seed
                 )
         
-        # === (3) 标量类型 + aclScalar 专属推导 ===
-        if param_type == 'aclScalar' or param_type in self.SCALAR_TYPES:
-            if expression.startswith('derive_value_from_range'):
-                return self._derive_scalar_value(source_values[0], context, target, seed)
-        
         return None
+    
+    def _derive_scalar_value(self, value_range, dtype_value, seed):
+        """根据 value_range 和 dtype 随机生成标量 value"""
+        if not isinstance(value_range, list) or len(value_range) != 2:
+            return None
+        signed_zero = self._check_signed_zero_range(value_range)
+        if signed_zero is not None:
+            return signed_zero
+        result = generate_random_value_by_dtype(dtype_value, value_range, seed=seed)
+        if isinstance(result, list):
+            if len(result) == 2 and all(isinstance(v, (int, float)) for v in result):
+                mid = (result[0] + result[1]) / 2
+                if dtype_value in INTEGER_DTYPES or dtype_value in ('bool',):
+                    mid = int(mid)
+                return mid
+            return None
+        return result
     
     def _derive_length(self, length_ranges, seed):
         """根据 length_ranges 随机生成 length"""
@@ -402,6 +441,15 @@ class FactorValueGenerator:
             return None
         return [generate_random_shape(dimensions_val, seed=seed + i) for i in range(length_val)]
     
+    @staticmethod
+    def _check_signed_zero_range(value_range):
+        if isinstance(value_range, list) and len(value_range) == 2:
+            if value_range[0] == '+0' and value_range[1] == '+0':
+                return '+0'
+            if value_range[0] == '-0' and value_range[1] == '-0':
+                return '-0'
+        return None
+
     def _derive_array_value(self, length_val, value_range_val, context, target, seed):
         """
         根据 value_range 随机生成 length 个数，保存在 list 中
@@ -411,18 +459,13 @@ class FactorValueGenerator:
             return None
         if not isinstance(value_range_val, list) or len(value_range_val) != 2:
             return None
+        signed_zero = self._check_signed_zero_range(value_range_val)
+        if signed_zero is not None:
+            return [signed_zero] * length_val
         param_name = target.split('.')[0]
         dtype_value = context.get(f'{param_name}.dtype', 'float32')
         random.seed(seed)
         return [generate_random_value_by_dtype(dtype_value, value_range_val) for _ in range(length_val)]
-    
-    def _derive_scalar_value(self, value_range, context, target, seed):
-        """根据 value_range 随机生成标量 value"""
-        if not isinstance(value_range, list) or len(value_range) != 2:
-            return None
-        param_name = target.split('.')[0]
-        dtype_value = context.get(f'{param_name}.dtype', 'float32')
-        return generate_random_value_by_dtype(dtype_value, value_range, seed=seed)
     
     def solve_all_constraints_for_factor(self, factor_name: str, context: Dict[str, Any]) -> Union[List[Any], Any, None]:
         """
@@ -451,8 +494,10 @@ class FactorValueGenerator:
         result = None
         
         for i, constraint in enumerate(constraints):
-            result = self.solve_constraint_range(constraint, context)
-            context[factor_name] = result
+            new_result = self.solve_constraint_range(constraint, context)
+            if new_result is not None and new_result != [] and new_result:
+                result = new_result
+            context[factor_name] = result if result is not None else new_result
         
         return result
 
@@ -576,6 +621,7 @@ class FactorValueGenerator:
     def _solve_broadcast_shape_range(self, constraint: Dict, context: Dict[str, Any]) -> List[List[int]]:
         """求解broadcast_shape约束"""
         sources = constraint.get('sources', [])
+        target = constraint.get('target', '')
         mode = constraint.get('mode', 'unidirectional')
         
         source_shape = context.get(sources[0])
@@ -585,7 +631,15 @@ class FactorValueGenerator:
         if mode == 'unidirectional':
             return generate_unidirectional_broadcast_shapes(source_shape)
         else:
-            return generate_broadcast_shapes(source_shape)
+            param_name = target.split('.')[0]
+            target_dims = context.get(f'{param_name}.dimensions')
+            
+            max_attempts = 100
+            for _ in range(max_attempts):
+                shape = generate_broadcast_shapes(source_shape)
+                if target_dims is None or len(shape) == target_dims:
+                    return shape
+            return source_shape
     
     def expand_value_range_for_dtype(self, combinations: List[Dict[str, Any]], random_select: bool = False) -> List[Dict[str, Any]]:
         """
@@ -868,12 +922,18 @@ class FactorValueGenerator:
                     
                     if isinstance(value_range, list) and len(value_range) == 2:
                         try:
-                            hashable_combo = frozenset((k, self._make_hashable(v)) for k, v in combo.items())
-                            random.seed(hash(hashable_combo) % (2**32))
-                            random_value = generate_random_value_by_dtype(dtype_value, value_range)
-                            new_combo = dict(combo)
-                            new_combo[value_factor] = random_value
-                            new_result.append(new_combo)
+                            signed_zero = self._check_signed_zero_range(value_range)
+                            if signed_zero is not None:
+                                new_combo = dict(combo)
+                                new_combo[value_factor] = signed_zero
+                                new_result.append(new_combo)
+                            else:
+                                hashable_combo = frozenset((k, self._make_hashable(v)) for k, v in combo.items())
+                                random.seed(hash(hashable_combo) % (2**32))
+                                random_value = generate_random_value_by_dtype(dtype_value, value_range)
+                                new_combo = dict(combo)
+                                new_combo[value_factor] = random_value
+                                new_result.append(new_combo)
                         except Exception:
                             new_result.append(combo)
                     else:
@@ -953,18 +1013,29 @@ class FactorValueGenerator:
                 #     new_combo[factor] = result
                 #     new_combinations.append(new_combo)
             else:
-                domain = self.get_factor_domain(factor)
-                if domain:
-                    value = random.choice(domain)
-                    new_combo = dict(combo)
-                    new_combo[factor] = value
-                    new_combinations.append(new_combo)
-                    # for value in domain:
-                    #     new_combo = dict(combo)
-                    #     new_combo[factor] = value
-                    #     new_combinations.append(new_combo)
-                else:
+                if factor.endswith('.value'):
+                    param_name = factor.split('.')[0]
+                    value_range = combo.get(f'{param_name}.value_range')
+                    dtype_value = combo.get(f'{param_name}.dtype', 'float32')
+                    if value_range is not None and isinstance(value_range, list) and len(value_range) == 2:
+                        hashable_combo = frozenset((k, self._make_hashable(v)) for k, v in combo.items())
+                        seed = hash(hashable_combo) % (2**32)
+                        scalar_value = generate_random_value_by_dtype(dtype_value, value_range, seed=seed)
+                        if not isinstance(scalar_value, list):
+                            new_combo = dict(combo)
+                            new_combo[factor] = scalar_value
+                            new_combinations.append(new_combo)
+                            continue
                     new_combinations.append(combo)
+                else:
+                    domain = self.get_factor_domain(factor)
+                    if domain:
+                        value = random.choice(domain)
+                        new_combo = dict(combo)
+                        new_combo[factor] = value
+                        new_combinations.append(new_combo)
+                    else:
+                        new_combinations.append(combo)
         
         return new_combinations
     
@@ -1120,6 +1191,11 @@ class FactorValueGenerator:
                     return "'inf'"
                 elif v == float('-inf'):
                     return "'-inf'"
+                elif v == 0.0:
+                    if math.copysign(1, v) < 0:
+                        return '-0'
+                    else:
+                        return '+0'
             return v
         
         with open(output_path, 'w', newline='', encoding='utf-8') as f:

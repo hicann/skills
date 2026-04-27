@@ -246,10 +246,10 @@ class ImplicitConstraintGenerator:
                 original_content = f.read()
             with open(backup_path, "w", encoding="utf-8") as f:
                 f.write(original_content)
-            print(f"✅ 备份已保存: {backup_path}")
+            print(f"  备份已保存: {backup_path}")
             backup_created = True
         except FileNotFoundError:
-            print("原文件不存在，跳过备份")
+            print("  原文件不存在，跳过备份")
             original_content = ""
 
         if not original_content.strip():
@@ -261,17 +261,17 @@ class ImplicitConstraintGenerator:
             with open(self.constraints_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            print(f"✅ 隐式约束已追加到: {self.constraints_path}")
+            print(f"  隐式约束已追加到: {self.constraints_path}")
             print(f"  新增 {len(self.new_constraints)} 个约束")
             print(f"  总约束数: {len(self.constraints_data['constraints']) + len(self.new_constraints)}")
 
             if backup_created and backup_path.exists():
                 backup_path.unlink()
-                print(f"✅ 备份文件已删除: {backup_path}")
+                print(f"  备份文件已删除: {backup_path}")
 
         except Exception as e:
-            print(f"❌ 保存失败，备份文件保留: {backup_path}")
-            print(f"   错误: {e}")
+            print(f"  保存失败，备份文件保留: {backup_path}")
+            print(f"  错误: {e}")
             raise
 
     def _is_tensor_list_param(self, param_name: str) -> bool:
@@ -494,12 +494,12 @@ def main():
         if implicit_constraints:
             print(f"\n正在保存 {len(implicit_constraints)} 个隐式约束...")
             generator.save()
-            print("\n✅ 完成")
+            print("\n完成")
         else:
             print("\n无需生成新的隐式约束")
 
     except Exception as e:
-        print(f"\n❌ 错误: {e}")
+        print(f"\n错误: {e}")
         if args.verbose:
             import traceback
 

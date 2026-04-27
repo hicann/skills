@@ -299,7 +299,7 @@ class ConstraintParser:
             for source in sources:
                 if source in self.factors:
                     self.graph.add_bidirectional(source, target, constraint_id)
-                    self.graph.add_edge(target, source, constraint_id)
+                    self.graph.add_edge(source, target, constraint_id)
     
     def _parse_conditional(self, constraint: Dict[str, Any]):
         constraint_id = constraint.get('id', '')

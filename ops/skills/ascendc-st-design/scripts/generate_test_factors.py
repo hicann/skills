@@ -27,7 +27,7 @@ import re
 from typing import Dict, List, Any
 from collections import OrderedDict
 
-SPECIAL_STRINGS = {"inf", "-inf", "nan", "+inf"}
+SPECIAL_STRINGS = {"inf", "-inf", "nan", "+inf", "+0", "-0"}
 
 TENSOR_TYPES = {"aclTensor", "aclTensorList"}
 
@@ -443,11 +443,7 @@ def extract_tensor_factors(param: Dict) -> Dict[str, List]:
             factors[f"{name}.format"] = [format_value]
 
     if "dimensions" in param:
-        dims = param["dimensions"]
-        if isinstance(dims, list):
-            factors[f"{name}.dimensions"] = dims
-        else:
-            factors[f"{name}.dimensions"] = [dims]
+        factors = check_dim(param, factors, name)
 
     if "length_ranges" in param:
         converted_range = convert_range_list(param["length_ranges"])
@@ -455,6 +451,33 @@ def extract_tensor_factors(param: Dict) -> Dict[str, List]:
 
     _extract_dtype_range_factors(name, param, io_type, factors)
 
+    return factors
+
+
+def check_dim(param, factors, name):
+    dims = param["dimensions"]
+    if isinstance(dims, list):
+        fixed_dims = []
+        for d in dims:
+            if not isinstance(d, int):
+                abs_d = int(d) if isinstance(d, (int, float)) else 1
+                fixed_dims.append(abs_d)
+            elif d < 0:  # 只过滤负数，允许0
+                fixed_dims.append(abs(d))
+            elif d > 8:
+                fixed_dims.append(8)
+            else:
+                fixed_dims.append(d)
+        factors[f"{name}.dimensions"] = fixed_dims
+    else:
+        d = dims
+        if not isinstance(d, int) or d <= 0:
+            abs_d = abs(int(d)) if isinstance(d, (int, float)) else 1
+            factors[f"{name}.dimensions"] = [abs_d]
+        elif d > 8:
+            factors[f"{name}.dimensions"] = [8]
+        else:
+            factors[f"{name}.dimensions"] = [d]
     return factors
 
 
