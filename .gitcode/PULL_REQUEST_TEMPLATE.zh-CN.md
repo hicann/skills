@@ -1,5 +1,5 @@
 ## 描述
-<!--在这里详细描述您的改动，包括改动的原因和所采取的方法。-->
+<!--在这里详细描述您的改动，包括改动的原因和所采取的方法。
 
 ### 举例：
 
@@ -9,6 +9,7 @@
 
 #### 问题修复 Bug Fix
 【算子直调 ops-direct-invoke】修改verify_environment.sh脚本，返回environment.json 固定为1的bug，应该按实际设备的npu count返回。
+-->
 
 ## 关联的Issue
 <!-- 如果这个PR是为了解决特定的Issue，请在这里提供Issue链接。例如：关联Issue #000-->

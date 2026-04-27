@@ -4,29 +4,32 @@
 
 ### 项目定位
 
-**CANNBot** 是面向CANN开发的用于提升开发效率的系列智能体，本仓库为其提供可复用的Skills模块，目前已覆盖 Ascend C / PyPTO 算子开发全流程和 NPU 模型推理端到端优化。
+**CANNBot** 是面向 CANN 开发的用于提升开发效率的系列智能体，本仓库为其提供可复用的 Skills 模块，目前已覆盖 Ascend C / PyPTO / TileLang 算子开发流程和 NPU 模型推理端到端优化。
 
 ### 目标用户
 
 - CANN 社区开发者
 - 昇腾 NPU 平台 AI 应用开发者
-- Ascend C / PyPTO 算子开发者
+- Ascend C / PyPTO / TileLang 算子开发者
 - 使用昇腾 NPU 进行模型推理优化的开发者
 - 希望贡献 Skills / Agents 的社区贡献者
 
 &nbsp;
 
 ## 🔥 最新动态
-
+- **2026-04-25** — 增强 ascendc-precision-debug和ascendc-runtime-debug的调试能力。
+- **2026-04-24** — 新增 Ascend C 性能调优知识货架。
+- **2026-04-23** — 在 Readme.md 新增 Skills 的使用样例。
 - **2026-04-21** — 修复测试框架并解决识别到的多项校验问题
-- **2026-04-20** — 新增 regbase 配置最佳实践，修复环境检查设备计数 bug，统一算子目录命名 (ops → operators)
-- **2026-04-18** — 修复 ops-profiling 技能名称不一致问题
+- **2026-04-20** — 新增 regbase 配置最佳实践，修复环境检查设备计数 bug，统一算子目录命名（ops → operators）。
+- **2026-04-18** — 修复 ops-profiling 技能名称不一致的问题。
 - **2026-04-17** — 新增精度模式自动生成、完善 broadcast tiling 设计，新增初始化脚本和快速入门指南
-- **2026-04-16** — 新增 Plugin 化安装体系（Claude Code / OpenCode），新增 NPU 模型推理端到端优化 Skill 体系（含 3 个 SubAgent 和 infer-model-optimize-team）
-- **2026-04-14** — 新增 Ascend 950 仿真 Skill，增强 UT/ST 测试能力，修复 verify_environment.sh 设备计数 bug
-- **2026-04-13** — 支持 Team 级代码检视全量覆盖，子 Agent 并行检视提升效果
-- **2026-04-10** — 新增 PyPTO 算子开发全套体系（8 个 Skills + 3 个 Agents + 1 个 Team）
+- **2026-04-16** — 新增 Plugin 化安装体系（Claude Code / OpenCode），新增 NPU 模型推理端到端优化 Skill 体系（含 3 个 SubAgent 和 infer-model-optimize-team）。
+- **2026-04-14** — 新增 Ascend 950 仿真 Skill，增强 UT / ST 测试能力，修复 verify_environment.sh 设备计数的问题。
+- **2026-04-13** — 支持 Team 级代码检视全量覆盖，子 Agent 并行检视提升效果。
+- **2026-04-10** — 新增 PyPTO 算子开发全套体系（8 个 Skills + 3 个 Agents + 1 个 Team）。
 
+&nbsp;
 > 详细变更记录，详见 [CHANGELOG.md](CHANGELOG.md) 文件。
 
 &nbsp;
@@ -152,7 +155,7 @@ skills/
 │   └── teams/              # 多 Agent 协同
 │       ├── ops-direct-invoke/   # 算子 <<<>>> 直调开发流程
 │       └── pypto-op-orchestrator/  # PyPTO 算子开发流程
-├── ops-lab/               # 算子 Skills/Agents（实验/非正式版）
+├── ops-lab/               # 算子 Skills / Agents（实验 / 非正式版）
 ├── model/                 # 模型推理优化
 │   ├── skills/            # 推理优化技能模块
 │   ├── agents/            # 子 Agent（analyzer / implementer / reviewer）
@@ -295,7 +298,7 @@ skills/
 | **ascendc-npu-arch** | NPU 架构知识、芯片型号映射 | — |
 | **ascendc-docs-search** | API 文档索引 + 在线搜索 | — |
 | **ascendc-env-check** | NPU 设备查询、CANN 环境验证 | — |
-| **ascendc-tiling-design** | Tiling和Kernel 设计方法论，按算子类别分类 | — |
+| **ascendc-tiling-design** | Tiling 和 Kernel 设计方法论，按算子类别分类 | — |
 | **ascendc-precision-debug** | 精度调试，症状-原因速查、常见陷阱 | — |
 | **ascendc-runtime-debug** | 运行时错误调试，错误码解析、Kernel 挂起排查 | — |
 | **ascendc-ut-develop** | UT 单元测试用例开发与覆盖率增强 | — |
@@ -341,6 +344,8 @@ skills/
 | **model-infer-prefetch** | 权重预取适配 |
 | **model-infer-superkernel** | SuperKernel 适配 |
 
+&nbsp;
+
 ## 🚀 Agents 智能代理
 
 ### Ascend C 算子开发
@@ -362,6 +367,7 @@ skills/
 | **pypto-op-perf-tuner** | 性能分析与调优 |
 
 &nbsp;
+
 ### NPU 模型推理优化
 
 | Agent | 功能 |
@@ -370,6 +376,8 @@ skills/
 | **model-infer-implementer** | 代码改造、调试修复 |
 | **model-infer-reviewer** | 精度验证、性能对比 |
 
+&nbsp;
+
 ## 🛠️ 测试框架
 
 自动化测试验证 Skills 和 Agents 的正确性，确保技能模块和智能代理的行为符合预期。
@@ -377,34 +385,32 @@ skills/
 
 &nbsp;
 
-## 📝 许可证
-
-本项目遵循华为 CANN 社区许可证协议，详见 [LICENSE](LICENSE) 文件。
+## 💬相关信息
+- [贡献指南、开发规范](docs/STANDARDS.md)
+- [许可证](LICENSE)
+- [所属SIG](https://gitcode.com/cann/community/tree/master/CANN/sigs/cannbot)
 
 &nbsp;
 
 ## 💖 免责声明
 
-感谢您关注 CANNBot Skills 项目！我们希望这些技能和知识能帮助您更好地进行 CANN 开发。
+感谢您关注 CANNBot Skills 项目，我们希望这些技能和知识能帮助您更好地进行 CANN 开发^_^
 
 在使用之前，请您了解：
 
-1. **关于内容质量**：由于技术快速更新迭代，部分内容可能无法完全适用于所有场景。如果发现问题，欢迎提 Issue、讨论来告诉我们。
+1. **关于功能满足度**：由于技术快速更新迭代，部分内容可能无法完全适用于所有场景。 本开源社区的功能和文档正在持续更新和完善、丰富场景中，如果想提出需求、发现问题、贡献想法，非常欢迎提 Issue、讨论来告诉我们，共创共建。
 
-2. **关于使用目的**：本仓库内容处于 experimental 状态，仅供技术参考和学习使用，建议在测试环境充分验证后再用于生产场景。
+2. **关于自动生成**：自动代码生成工具所产出的内容，其完整性、准确性、合规性，受模型类型、模型版本、Skills 能力、语料质量、输入指令、运行环境等多种因素影响，无法保证完全精准、尽善尽美。所有生成代码作为辅助研发使用，请开发者务必进行测试验证、安全审查后再投入使用。
 
 &nbsp;
 
 ## 🤝 联系我们
-   
-本项目的功能和文档正在持续更新和完善中，欢迎您关注最新版本。
-   
 ### 需求、问题、咨询、任务、文档
 通过GitCode[【Issues】](https://gitcode.com/cann/skills/issues)提交。
    
 ### 社区互动
 通过GitCode[【讨论】](https://gitcode.com/cann/skills/discussions)参与交流。
    
-### 微信群
-![](./docs/contact.jpg)
+### 联系我们
+[【微信交流群】](https://gitcode.com/cann/skills/discussions/2)
 
