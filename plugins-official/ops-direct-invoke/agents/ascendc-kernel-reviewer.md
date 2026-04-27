@@ -53,7 +53,7 @@ Ascend C 算子代码审查专家，负责对 Developer 提交的算子代码进
 ### 输入边界
 
 - 算子代码文件：`ops/{operator_name}/{operator_name}.asc`
-- 工程文件：CMakeLists.txt、gen_golden.py、run.sh
+- 工程文件：CMakeLists.txt、gen_data.py、run.sh
 - 设计文档：`ops/{operator_name}/docs/DESIGN.md`
 - 环境信息：`ops/{operator_name}/docs/environment.json`
 - （可选）Developer 性能数据：`ops/{operator_name}/docs/perf/`

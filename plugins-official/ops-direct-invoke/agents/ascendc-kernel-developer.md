@@ -63,7 +63,7 @@ Ascend C 算子开发专家，负责根据 Architect 的设计方案（或直接
 ### 输出边界
 
 - 算子代码文件：`ops/{operator_name}/{operator_name}.asc`
-- 工程文件：CMakeLists.txt、gen_golden.py、run.sh
+- 工程文件：CMakeLists.txt、gen_data.py、run.sh
 - 更新后的 PLAN.md（进度和测试结果）
 - README.md 算子文档
 - （串讲模式）`ops/{operator_name}/docs/WALKTHROUGH.md`
@@ -135,7 +135,7 @@ Ascend C 算子开发专家，负责根据 Architect 的设计方案（或直接
 **目标**：通过多级测试、覆盖PyTorch接入测试。
 
 **准备工作**：
-- 完善 `gen_golden.py` 测试数据生成
+- 完善 `gen_data.py` 测试数据生成
 - 完善 `run.sh` 运行脚本
 
 **渐进式测试**：

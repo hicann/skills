@@ -12,7 +12,7 @@
 |---|--------|------|----------|
 | D1 | 算子源码 | `operators/{operator_name}/{operator_name}.asc` | 独立编译通过，无警告 |
 | D2 | 构建文件 | `operators/{operator_name}/CMakeLists.txt` | 依赖项完整 |
-| D3 | Golden 数据生成 | `operators/{operator_name}/gen_golden.py` | 支持所有要求的 dtype |
+| D3 | Golden 数据生成 | `operators/{operator_name}/gen_data.py` | 支持所有要求的 dtype |
 | D4 | 运行脚本 | `operators/{operator_name}/run.sh` | 可正常执行 |
 | D5 | 算子文档 | `operators/{operator_name}/README.md` | 包含：算子概述、数学公式、API 映射、编译运行指南、测试结果、已知限制 |
 | D6 | 设计文档 | `operators/{operator_name}/docs/DESIGN.md` | 包含：需求分析、3D 抽象、API 映射、UB 规划、精度策略 |
