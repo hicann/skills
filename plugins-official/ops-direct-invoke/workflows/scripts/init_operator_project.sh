@@ -112,8 +112,15 @@ echo ""
 echo "✅ 项目初始化完成！"
 echo ""
 echo "下一步操作："
-echo "  1. 运行环境验证："
-echo "     bash workflows/scripts/verify_environment.sh ${OPERATOR_NAME}"
+# 如果 CWD 下不存在相对路径的 verify_environment.sh，输出绝对路径提示
+if [ -f "workflows/scripts/verify_environment.sh" ]; then
+    echo "  1. 运行环境验证："
+    echo "     bash workflows/scripts/verify_environment.sh ${OPERATOR_NAME}"
+else
+    _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    echo "  1. 运行环境验证："
+    echo "     bash ${_script_dir}/verify_environment.sh ${OPERATOR_NAME}"
+fi
 echo ""
 echo "  2. 开始设计阶段（Phase 1）"
 echo ""

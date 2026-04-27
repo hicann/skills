@@ -10,9 +10,10 @@
  *   ["cannbot@...", {"team": "ops-direct-invoke"}]         — install only this team's deps
  *   ["cannbot@...", {"team": "pypto-op-orchestrator"}]     — install only this team's deps
  *
- * Each team declares its dependencies in .claude-plugin/plugin.json:
- *   { "deps": { "agents": [...], "skills": [...] } }
- * When team is "all", all agents and skills from the shared pool are installed.
+ * Each team declares its agents in .claude-plugin/plugin.json:
+ *   { "agents": ["./agents/name.md"], "dependencies": ["skills-plugin-name"] }
+ * Skills are resolved via marketplace.json using the dependencies field.
+ * When team is "all", all agents and skills from all teams are installed.
  */
 
 import path from 'path';
@@ -164,19 +165,36 @@ const safeUnlinkStaleSymlink = (dst, allowedPrefix) => {
 };
 
 /**
- * Load all agents/skills from the shared pool (no filtering).
+ * Load all agents/skills from the shared pool and all team directories.
  * Returns { agents: string[], skills: string[] }.
+ *
+ * Agents are collected by scanning every team directory under plugins-official/
+ * because the shared ops/agents pool was emptied during the cd5b220 refactor.
+ * Skills are taken from the ops/skills shared pool (no per-team skills dirs exist).
  */
 const loadAllDeps = () => {
   let agents = [];
   let skills = [];
+
+  // Scan all team directories for agents (post-cd5b220 architecture)
   try {
-    agents = fs.readdirSync(SHARED_AGENTS_DIR)
-      .filter(f => f.endsWith('.md'))
-      .map(f => f.replace(/\.md$/, ''));
+    const teams = fs.readdirSync(TEAMS_DIR).filter(d => {
+      const agentsDir = path.join(TEAMS_DIR, d, 'agents');
+      return fs.existsSync(agentsDir) && fs.statSync(agentsDir).isDirectory();
+    });
+    for (const team of teams) {
+      const teamAgentsDir = path.join(TEAMS_DIR, team, 'agents');
+      const teamAgents = fs.readdirSync(teamAgentsDir)
+        .filter(f => f.endsWith('.md'))
+        .map(f => f.replace(/\.md$/, ''));
+      agents = agents.concat(teamAgents);
+    }
+    agents = [...new Set(agents)];
   } catch (e) {
-    warn(`cannot read shared agents dir ${SHARED_AGENTS_DIR}: ${e.message}`);
+    warn(`cannot read teams dir ${TEAMS_DIR}: ${e.message}`);
   }
+
+  // Scan shared skills pool
   try {
     skills = fs.readdirSync(SHARED_SKILLS_DIR)
       .filter(d => fs.existsSync(path.join(SHARED_SKILLS_DIR, d, 'SKILL.md')));
@@ -216,18 +234,55 @@ const resolveTeam = (teamName) => {
 };
 
 /**
+ * Load the marketplace skill map from .claude-plugin/marketplace.json.
+ * Builds a lookup table: skills-plugin-name → [skillName, ...]
+ * so that team plugins can resolve their skills via the `dependencies` field
+ * without duplicating the skills list in every team plugin.json.
+ */
+const loadMarketplaceSkillMap = () => {
+  const marketplacePath = path.join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
+  try {
+    const marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf8'));
+    const map = {};
+    for (const plugin of (marketplace.plugins || [])) {
+      if (plugin.skills && Array.isArray(plugin.skills)) {
+        map[plugin.name] = plugin.skills.map(p => path.basename(p));
+      }
+    }
+    return map;
+  } catch (e) {
+    warn(`Failed to load marketplace.json (${e.message}), skills resolution via dependencies will not work`);
+    return {};
+  }
+};
+
+/**
  * Load team dependency declarations from .claude-plugin/plugin.json.
  * Extracts agent/skill names from the path arrays:
  *   agents: ["./agents/name.md"] → ["name"]
  *   skills: ["./skills/name"]    → ["name"]
+ *
+ * When plugin.json does not declare `skills` directly (post-cd5b220 architecture),
+ * falls back to resolving skills through marketplace.json using the `dependencies`
+ * field (e.g. "ops-direct-invoke-skills" → [ascendc-api-best-practices, ...]).
+ *
  * Returns { agents: string[], skills: string[] } or null on failure.
  */
-const loadTeamDeps = (teamDir) => {
+const loadTeamDeps = (teamDir, skillMap) => {
   const manifestPath = path.join(teamDir, '.claude-plugin', 'plugin.json');
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     const agents = (manifest.agents || []).map(p => path.basename(p, '.md'));
-    const skills = (manifest.skills || []).map(p => path.basename(p));
+    let skills = (manifest.skills || []).map(p => path.basename(p));
+    // Fallback: resolve skills from marketplace.json via dependencies
+    if (skills.length === 0 && Array.isArray(manifest.dependencies) && skillMap) {
+      for (const dep of manifest.dependencies) {
+        const depSkills = skillMap[dep];
+        if (depSkills) {
+          skills = skills.concat(depSkills);
+        }
+      }
+    }
     return { agents, skills };
   } catch (e) {
     warn(`Failed to load ${manifestPath} (${e.message}), no agents/skills will be installed`);
@@ -382,11 +437,52 @@ const parseAgentMd = (filePath) => {
 /**
  * Build agent config entries for all declared team agents.
  * Returns a map of { agentName: agentConfig } ready to merge into config.agent.
+ *
+ * Resolution order:
+ *   1. teamDir/agents/ (specific team, post-cd5b220 architecture)
+ *   2. SHARED_AGENTS_DIR/ (legacy shared pool)
+ *   3. Scan all team directories (all mode, when teamDir is null)
  */
-const buildAgentConfigs = (depAgents) => {
+const buildAgentConfigs = (depAgents, teamDir) => {
   const agents = {};
   for (const name of depAgents) {
-    const src = path.join(SHARED_AGENTS_DIR, `${name}.md`);
+    let src = null;
+
+    // 1. Specific team directory
+    if (teamDir) {
+      const candidate = path.join(teamDir, 'agents', `${name}.md`);
+      if (fs.existsSync(candidate)) {
+        src = candidate;
+      }
+    }
+
+    // 2. Shared pool (legacy)
+    if (!src) {
+      const candidate = path.join(SHARED_AGENTS_DIR, `${name}.md`);
+      if (fs.existsSync(candidate)) {
+        src = candidate;
+      }
+    }
+
+    // 3. All-mode fallback: scan every team directory
+    if (!src && !teamDir) {
+      try {
+        const teams = fs.readdirSync(TEAMS_DIR);
+        for (const t of teams) {
+          const candidate = path.join(TEAMS_DIR, t, 'agents', `${name}.md`);
+          if (fs.existsSync(candidate)) {
+            src = candidate;
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (!src) {
+      warn(`agent file for "${name}" not found in any team or shared pool`);
+      continue;
+    }
+
     const parsed = parseAgentMd(src);
     if (parsed) {
       agents[parsed.name] = parsed.config;
@@ -559,13 +655,11 @@ const buildBootstrapContent = (teamDir, teamName, depAgents) => {
   if (teamName === 'pypto-op-orchestrator') {
     orchestratorIdentity = 'PyPTO Operator Development Orchestrator';
     const pyptoDir = path.join(teamCacheDir(teamName), 'pypto');
-    const skillsDir = path.join(teamDir, 'skills');
     const agentsDir = path.join(teamDir, 'agents');
 
     pathGuide += `
 All relative references in this document resolve to absolute paths:
 - \`pypto/\` → \`${pyptoDir}/\`
-- \`skills/\` → \`${skillsDir}/\`
 - \`agents/\` → \`${agentsDir}/\`
 
 Paths starting with \`custom/{op}/\` are relative to the user's current working directory.`;
@@ -642,14 +736,19 @@ ${agentsContent}
  * one looking for `**\/SKILL.md` — so we can point directly at the plugin
  * cache instead of writing symlinks into the user's project dir.
  *
+ * Searches team-specific skills/ first (post-cd5b220 self-contained architecture),
+ * then falls back to the shared pool (legacy architecture).
+ *
  * Returns an array of absolute paths (one per valid skill).
  */
-const resolveSkillPaths = (depSkills) => {
+const resolveSkillPaths = (depSkills, teamDir) => {
   const out = [];
   for (const name of depSkills) {
-    const src = path.join(SHARED_SKILLS_DIR, name);
+    const teamSrc = teamDir ? path.join(teamDir, 'skills', name) : null;
+    const sharedSrc = path.join(SHARED_SKILLS_DIR, name);
+    const src = teamSrc && fs.existsSync(path.join(teamSrc, 'SKILL.md')) ? teamSrc : sharedSrc;
     if (!fs.existsSync(path.join(src, 'SKILL.md'))) {
-      warn(`Declared skill "${name}" not found in ${SHARED_SKILLS_DIR}`);
+      warn(`Declared skill "${name}" not found in ${SHARED_SKILLS_DIR} or team skills dir`);
       continue;
     }
     out.push(src);
@@ -727,18 +826,19 @@ export const CANNBotPlugin = async ({ client, directory }, options) => {
   if (effectiveTeam && !teamDir) return {};
 
   // "all" → install everything; specific team → install only its deps
+  const skillMap = loadMarketplaceSkillMap();
   const deps = isAllTeams
     ? loadAllDeps()
-    : (teamDir ? (loadTeamDeps(teamDir) || { agents: [], skills: [] }) : loadAllDeps());
+    : (teamDir ? (loadTeamDeps(teamDir, skillMap) || { agents: [], skills: [] }) : loadAllDeps());
 
   // Resolve skill paths directly from the plugin cache. OpenCode's
   // config.skills.paths takes absolute paths, so there is no need to
   // create `.opencode/skills/` symlinks inside the user's cwd.
-  const skillPaths = resolveSkillPaths(deps.skills);
+  const skillPaths = resolveSkillPaths(deps.skills, teamDir);
 
   // Pre-parse agent configs for injection via config hook. Agents are
   // registered entirely via `config.agent` — no `.opencode/agents/` symlinks.
-  const agentConfigs = buildAgentConfigs(deps.agents);
+  const agentConfigs = buildAgentConfigs(deps.agents, teamDir);
 
   // One-shot: remove `.opencode/agents/` and `.opencode/skills/` symlink
   // directories that earlier versions of this plugin left behind in random
@@ -832,7 +932,7 @@ export const CANNBotPlugin = async ({ client, directory }, options) => {
       if (!contextTeamDir) return;
 
       const bootstrap = buildBootstrapContent(contextTeamDir, contextTeamName, deps.agents);
-      if (!bootstrap || !output.messages.length) return;
+      if (!bootstrap || !output.messages?.length) return;
 
       const firstUser = output.messages.find(m => m.info && m.info.role === 'user');
       if (!firstUser || !firstUser.parts || !firstUser.parts.length) return;
@@ -875,12 +975,13 @@ export const CANNBotPlugin = async ({ client, directory }, options) => {
       // Always advertise the target path for the active team, clone-ready
       // or not. Non-pypto teams also expose ASC_DEVKIT_DIR since that is
       // the primary devkit the skill docs reference.
+      output.env = output.env || {};
       if (!isPyptoTeam) output.env.ASC_DEVKIT_DIR = devkitDir;
       if (isPyptoTeam) output.env.PYPTO_DIR = pyptoDir;
 
       const devkitReady = isUsableClone(devkitDir);
       const pyptoReady = isUsableClone(pyptoDir);
-      if (devkitReady && pyptoReady) return;
+      if (isPyptoTeam ? pyptoReady : devkitReady) return;
 
       const cmd = typeof input?.command === 'string' ? input.command : '';
       if (!cmd) return;
@@ -888,7 +989,7 @@ export const CANNBotPlugin = async ({ client, directory }, options) => {
       // Only wait on clone when the command *uses* the repo — references
       // the env var or a subpath prefix (e.g. `asc-devkit/docs/...`). Bare
       // word matches like `grep pypto README.md` do not count.
-      const wantsDevkit = !devkitReady && /\$ASC_DEVKIT_DIR\b|\basc[-_]?devkit\/[A-Za-z0-9_.-]/i.test(cmd);
+      const wantsDevkit = !devkitReady && /\$ASC_DEVKIT_DIR\b|\basc[-_]?devkit\//i.test(cmd);
       const wantsPypto = !pyptoReady && isPyptoTeam
         && /\$PYPTO_DIR\b|\bpypto\/[A-Za-z0-9_.-]/i.test(cmd);
 

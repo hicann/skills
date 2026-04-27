@@ -32,7 +32,12 @@ if [ ! -d "$SAVE_DIR" ]; then
     echo "❌ 错误：项目目录不存在"
     echo ""
     echo "请先运行项目初始化："
-    echo "  bash workflows/scripts/init_operator_project.sh ${OPERATOR_NAME}"
+    if [ -f "workflows/scripts/init_operator_project.sh" ]; then
+        echo "  bash workflows/scripts/init_operator_project.sh ${OPERATOR_NAME}"
+    else
+        _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        echo "  bash ${_script_dir}/init_operator_project.sh ${OPERATOR_NAME}"
+    fi
     exit 1
 fi
 
@@ -267,8 +272,67 @@ collect_env_info() {
     echo "[6/7] 检查 asc-devkit..."
     echo "────────────────────────────────────────────────────────────────"
     
-    ASC_DEVKIT_PATH="${ASC_DEVKIT_DIR:-asc-devkit}"
-    if [ -d "$ASC_DEVKIT_PATH" ]; then
+    # 自动检测 asc-devkit 路径
+    detect_asc_devkit() {
+        # 优先级 1: 环境变量已设置且目录存在
+        if [ -n "$ASC_DEVKIT_DIR" ] && [ -d "$ASC_DEVKIT_DIR" ]; then
+            echo "$ASC_DEVKIT_DIR"
+            return
+        fi
+        
+        # 优先级 2: 当前工作目录下的 asc-devkit
+        if [ -d "$(pwd)/asc-devkit" ]; then
+            echo "$(pwd)/asc-devkit"
+            return
+        fi
+        
+        # 优先级 3: 脚本真实路径所在目录的上级目录下的 asc-devkit
+        # 使用 readlink -f 解析 symlink，确保能定位到真实的插件根目录
+        local script_real
+        script_real="$(readlink -f "${BASH_SOURCE[0]}")"
+        local script_dir
+        script_dir="$(cd "$(dirname "$script_real")" && pwd)"
+        local project_root
+        project_root="$(dirname "$script_dir")"
+        # 脚本在 workflows/scripts/，project_root 是 workflows/，再上级才是插件根目录
+        local plugin_root
+        plugin_root="$(dirname "$project_root")"
+        if [ -d "$plugin_root/asc-devkit" ]; then
+            echo "$plugin_root/asc-devkit"
+            return
+        fi
+        
+        # 优先级 4: global 模式下的 ~/.config/opencode/asc-devkit
+        local global_devkit="${HOME}/.config/opencode/asc-devkit"
+        if [ -d "$global_devkit" ]; then
+            echo "$global_devkit"
+            return
+        fi
+        
+        # 优先级 5: ~/.claude/asc-devkit (Claude global mode)
+        local claude_devkit="${HOME}/.claude/asc-devkit"
+        if [ -d "$claude_devkit" ]; then
+            echo "$claude_devkit"
+            return
+        fi
+        
+        # 优先级 6: 环境变量已设置但目录不存在（返回原值，后续会报错）
+        if [ -n "$ASC_DEVKIT_DIR" ]; then
+            echo "$ASC_DEVKIT_DIR"
+            return
+        fi
+        
+        # 未找到
+        echo ""
+    }
+    
+    ASC_DEVKIT_PATH=$(detect_asc_devkit)
+    
+    if [ -n "$ASC_DEVKIT_PATH" ] && [ -d "$ASC_DEVKIT_PATH" ]; then
+        # 显示发现路径（如果是从自动检测得到的）
+        if [ -z "$ASC_DEVKIT_DIR" ] || [ "$ASC_DEVKIT_DIR" != "$ASC_DEVKIT_PATH" ]; then
+            echo "  ✓ 自动发现: ASC_DEVKIT_PATH=$ASC_DEVKIT_PATH"
+        fi
         success "asc-devkit 目录存在"
         ENV_DATA[asc_devkit_path]="$(json_escape "$ASC_DEVKIT_PATH")"
         ENV_DATA[asc_devkit_exists]="true"

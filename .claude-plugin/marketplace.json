@@ -110,17 +110,6 @@
       "dependencies": [
         "ops-code-reviewer-skills"
       ]
-    },
-    {
-      "name": "ops-registry-invoke",
-      "source": "./plugins-official/ops-registry-invoke",
-      "description": "Ascend C 算子注册调用开发 Team（待开发）。",
-      "version": "0.1.0",
-      "author": {
-        "name": "CANNBot"
-      },
-      "keywords": ["ascendc", "registry-invoke", "operator"],
-      "category": "development"
     }
   ]
 }

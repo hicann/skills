@@ -27,8 +27,11 @@ step() { echo -e "${DIM}$*${NC}"; }
 BRAND="cannbot"
 VERSION="1.0.0"
 
-# --- Team-specific filters ---
+# --- Plugin-specific filters ---
 EXCLUDED_SKILL=""
+# Skill whitelist (space-separated list) - references shared ops/skills
+INCLUDED_SKILLS="pypto-golden-generate pypto-op-design pypto-op-develop pypto-precision-debug pypto-op-perf-tune"
+# Agent whitelist (shell pattern) - uses local agents/
 INCLUDED_AGENT_PATTERN="pypto-op-*"
 
 show_banner() {
@@ -67,7 +70,7 @@ Examples:
 
 Installation paths (CANNBot brand):
   OpenCode: .opencode/{skills,agents}/  (auto-discovered)
-  Claude:   .claude/{skills,agents}/    (symlinks → ../../agents/, ../../skills/)
+  Claude:   .claude/{skills,agents}/    (per-skill symlinks auto-created)
 
 After installation, launch directly:
   OpenCode: opencode
@@ -79,8 +82,11 @@ LEVEL="project"
 TOOL="opencode"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
-ASCEND_AGENT_ROOT="$(cd "$SCRIPT_DIR/../../ops" && pwd)"
+PLUGIN_ROOT="$SCRIPT_DIR"
+# Agents: use local agents/ directory (migrated with plugin)
+LOCAL_AGENT_ROOT="$PLUGIN_ROOT/agents"
+# Skills: reference shared ops/skills directory
+SHARED_SKILL_ROOT="$(cd "$PLUGIN_ROOT/../../ops/skills" && pwd)"
 
 for arg in "$@"; do
     case "$arg" in
@@ -101,9 +107,9 @@ if [ "$LEVEL" = "global" ]; then
     fi
 else
     if [ "$TOOL" = "opencode" ]; then
-        CONFIG_ROOT="$PROJECT_ROOT/.opencode"
+        CONFIG_ROOT="$PLUGIN_ROOT/.opencode"
     else
-        CONFIG_ROOT="$PROJECT_ROOT/.claude"
+        CONFIG_ROOT="$PLUGIN_ROOT/.claude"
     fi
 fi
 
@@ -124,6 +130,98 @@ echo "  Level:     $LEVEL"
 echo "  Path:      $CONFIG_ROOT"
 echo ""
 
+# --- Step 0: Confirmation before installation ---
+step "[0/5] Checking items to be installed..."
+
+# Collect skills to install (from shared ops/skills)
+SKILLS_TO_INSTALL=""
+SKILL_COUNT=0
+for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
+    [ -d "$skill_dir" ] || continue
+    name=$(basename "$skill_dir")
+    echo "$INCLUDED_SKILLS" | grep -qw "$name" || continue
+    [ -n "$EXCLUDED_SKILL" ] && [ "$name" = "$EXCLUDED_SKILL" ] && continue
+    SKILLS_TO_INSTALL="$SKILLS_TO_INSTALL $name"
+    SKILL_COUNT=$((SKILL_COUNT + 1))
+done
+
+# Collect agents to install (from local agents/)
+AGENTS_TO_INSTALL=""
+AGENT_COUNT=0
+for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
+    [ -e "$agent_entry" ] || continue
+    name=$(basename "$agent_entry")
+    base="${name%.md}"
+    [[ "$base" != $INCLUDED_AGENT_PATTERN ]] && continue
+    AGENTS_TO_INSTALL="$AGENTS_TO_INSTALL $name"
+    AGENT_COUNT=$((AGENT_COUNT + 1))
+done
+
+# Display installation plan
+echo ""
+echo -e "${BOLD}以下内容将被安装/替换：${NC}"
+echo ""
+echo -e "${CYAN}Skills (${SKILL_COUNT} 项，来自共享 ops/skills)：${NC}"
+for name in $SKILLS_TO_INSTALL; do
+    target="$CANNBOT_DIR/skills/$name"
+    src="$SHARED_SKILL_ROOT/$name"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        echo -e "  ${YELLOW}$name${NC} → 将被替换为软连接到 ${src}"
+    else
+        echo -e "  ${GREEN}$name${NC} → 将创建软连接到 ${src}"
+    fi
+    echo -e "    ${DIM}目标路径: $target${NC}"
+done
+
+echo ""
+echo -e "${CYAN}Agents (${AGENT_COUNT} 项，来自本地 agents/)：${NC}"
+for name in $AGENTS_TO_INSTALL; do
+    target="$CANNBOT_DIR/agents/$name"
+    src="$LOCAL_AGENT_ROOT/$name"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        echo -e "  ${YELLOW}$name${NC} → 将被替换为软连接到 ${src}"
+    else
+        echo -e "  ${GREEN}$name${NC} → 将创建软连接到 ${src}"
+    fi
+    echo -e "    ${DIM}目标路径: $target${NC}"
+done
+
+echo ""
+echo -e "${CYAN}配置文件：${NC}"
+if [ "$LEVEL" = "project" ]; then
+    # Project-level: config file should be in current directory (PWD)
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$PWD/AGENTS.md"
+    else
+        config_target="$PWD/CLAUDE.md"
+    fi
+else
+    # Global-level: config file in CONFIG_ROOT
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$CONFIG_ROOT/AGENTS.md"
+    else
+        config_target="$CONFIG_ROOT/CLAUDE.md"
+    fi
+fi
+config_src="$PLUGIN_ROOT/AGENTS.md"
+# Skip only when source file is already at target location (same filename and same directory)
+# This only happens for OpenCode project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
+# For Claude, source is AGENTS.md but target is CLAUDE.md, so always need symlink
+if [ "$TOOL" = "opencode" ] && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
+    echo -e "  ${GREEN}$(basename "$config_target")${NC} → 已存在于当前目录，无需创建软链接"
+elif [ -e "$config_target" ] || [ -L "$config_target" ]; then
+    echo -e "  ${YELLOW}$(basename "$config_target")${NC} → 将被替换为软连接到 ${config_src}"
+else
+    echo -e "  ${GREEN}$(basename "$config_target")${NC} → 将创建软连接到 ${config_src}"
+fi
+echo -e "    ${DIM}目标路径: $config_target${NC}"
+
+echo ""
+echo -e "${BOLD}${YELLOW}注意：仅替换上述白名单内的内容，不影响其他已存在的 skills/agents${NC}"
+echo ""
+ok "开始安装..."
+echo ""
+
 # --- Step 1: Create directory symlinks ---
 step "[1/5] Setting up CANNBot directory..."
 mkdir -p "$CANNBOT_DIR"
@@ -131,38 +229,45 @@ mkdir -p "$CANNBOT_DIR"
 step1_summary=""
 step1_warns=""
 if [ "$TOOL" = "opencode" ]; then
-    # OpenCode: per-item symlinks for skills
+    # OpenCode: per-item symlinks for skills (from shared ops/skills, whitelist filtered)
     mkdir -p "$CANNBOT_DIR/skills"
-    # Pre-clean existing skill symlinks
-    for skill_dir in "$ASCEND_AGENT_ROOT/skills"/*/; do
+    # Pre-clean existing skill symlinks (only whitelist items)
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
+        # Only clean skills that are in whitelist
+        echo "$INCLUDED_SKILLS" | grep -qw "$name" || continue
         target="$CANNBOT_DIR/skills/$name"
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
     skill_count=0
-    for skill_dir in "$ASCEND_AGENT_ROOT/skills"/*/; do
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
+        # Check if skill is in whitelist (space-separated list)
+        echo "$INCLUDED_SKILLS" | grep -qw "$name" || continue
+        [ -n "$EXCLUDED_SKILL" ] && [ "$name" = "$EXCLUDED_SKILL" ] && continue
         ln -sfn "$(realpath "$skill_dir")" "$CANNBOT_DIR/skills/$name"
         skill_count=$((skill_count + 1))
     done
     step1_summary="skills(${skill_count}) "
 
-    # OpenCode: per-item symlinks for agents (whitelist filtered)
-    # Supports both agent directories and standalone .md agent files
+    # OpenCode: per-item symlinks for agents (from local agents/, whitelist filtered)
     mkdir -p "$CANNBOT_DIR/agents"
-    for agent_entry in "$ASCEND_AGENT_ROOT/agents"/*; do
+    # Pre-clean existing agent symlinks (only whitelist items)
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
+        base_name="${name%.md}"
+        # Only clean agents that match whitelist pattern
+        [[ "$base_name" != $INCLUDED_AGENT_PATTERN ]] && continue
         target="$CANNBOT_DIR/agents/$name"
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
     agent_count=0
-    for agent_entry in "$ASCEND_AGENT_ROOT/agents"/*; do
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
-        # Match pattern against name (strip .md suffix for file-based agents)
         base_name="${name%.md}"
         [[ "$base_name" != $INCLUDED_AGENT_PATTERN ]] && continue
         ln -sfn "$(realpath "$agent_entry")" "$CANNBOT_DIR/agents/$name"
@@ -180,14 +285,51 @@ echo ""
 
 # --- Step 2: Install config file (AGENTS.md / CLAUDE.md) ---
 step "[2/5] Installing configuration..."
-mkdir -p "$CONFIG_ROOT"
 
-if [ "$TOOL" = "opencode" ]; then
-    ln -sf "$PROJECT_ROOT/AGENTS.md" "$CONFIG_ROOT/AGENTS.md"
-    ok "AGENTS.md"
+# Determine target path for config file
+if [ "$LEVEL" = "project" ]; then
+    # Project-level: config file should be in current directory (PWD)
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$PWD/AGENTS.md"
+    else
+        config_target="$PWD/CLAUDE.md"
+    fi
 else
-    ln -sf "$PROJECT_ROOT/AGENTS.md" "$CONFIG_ROOT/CLAUDE.md"
-    ok "CLAUDE.md"
+    # Global-level: config file in CONFIG_ROOT
+    mkdir -p "$CONFIG_ROOT"
+    if [ "$TOOL" = "opencode" ]; then
+        config_target="$CONFIG_ROOT/AGENTS.md"
+    else
+        config_target="$CONFIG_ROOT/CLAUDE.md"
+    fi
+fi
+
+config_src="$PLUGIN_ROOT/AGENTS.md"
+
+# Skip only when source file is already at target location (same filename and same directory)
+# This only happens for OpenCode project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
+# For Claude, source is AGENTS.md but target is CLAUDE.md, so always need symlink
+if [ "$TOOL" = "opencode" ] && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
+    ok "$(basename "$config_target") already in current directory"
+else
+    if [ "$LEVEL" = "global" ]; then
+        # Global mode: generate a copy with absolute paths so that
+        # relative references work from any CWD.
+        # Must remove existing symlink first, otherwise `>` would truncate
+        # the symlink target (the original AGENTS.md) before sed reads it.
+        [ -e "$config_target" ] || [ -L "$config_target" ] && rm -f "$config_target"
+        PLUGIN_ROOT_ABS="$(realpath "$PLUGIN_ROOT")"
+        ESCAPED_ROOT="$(echo "$PLUGIN_ROOT_ABS" | sed 's/#/\\#/g')"
+        sed \
+          -e "s#\`workflows/#\`${ESCAPED_ROOT}/workflows/#g" \
+          -e "s#pypto/docs/#${ESCAPED_ROOT}/pypto/docs/#g" \
+          -e "s#pypto/examples/#${ESCAPED_ROOT}/pypto/examples/#g" \
+          "$config_src" > "$config_target"
+        ok "$(basename "$config_target") (absolute paths for global mode)"
+    else
+        ln -sf "$config_src" "$config_target"
+        ok "$(basename "$config_target")"
+    fi
 fi
 echo ""
 
@@ -195,25 +337,29 @@ echo ""
 step "[3/5] Configuring tool discovery..."
 
 if [ "$TOOL" = "opencode" ]; then
-    # OpenCode: skills/agents already at auto-scan paths, no extra discovery needed
+    # OpenCode: skills/ agents already at auto-scan paths, no extra discovery needed
     ok "Auto-scan: skills/, agents/"
 else
-    # Claude: create per-skill discovery symlinks
-    SKILLS_SRC="$ASCEND_AGENT_ROOT/skills"
+    # Claude: create per-skill discovery symlinks (with filter, from shared ops/skills)
     DISCOVERY="$CONFIG_ROOT/skills"
 
-    # Pre-clean existing skills
-    for skill_dir in "$SKILLS_SRC"/*/; do
+    # Pre-clean existing skills (only whitelist items)
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
+        # Only clean skills that are in whitelist
+        echo "$INCLUDED_SKILLS" | grep -qw "$name" || continue
         target="$DISCOVERY/$name"
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
 
     link_count=0
-    for skill_dir in "$SKILLS_SRC"/*/; do
+    for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
         [ -d "$skill_dir" ] || continue
         name=$(basename "$skill_dir")
+        # Check if skill is in whitelist (space-separated list)
+        echo "$INCLUDED_SKILLS" | grep -qw "$name" || continue
+        [ -n "$EXCLUDED_SKILL" ] && [ "$name" = "$EXCLUDED_SKILL" ] && continue
         target="$DISCOVERY/$name"
         ln -sfn "$(realpath "$skill_dir")" "$target"
         link_count=$((link_count + 1))
@@ -227,19 +373,22 @@ else
 
     ok "Skills: $link_count discovery symlinks"
 
-    # Claude: also create agent discovery symlinks
-    AGENTS_SRC="$ASCEND_AGENT_ROOT/agents"
+    # Claude: also create agent discovery symlinks (from local agents/)
     AGENT_DISCOVERY="$CONFIG_ROOT/agents"
 
-    for agent_entry in "$AGENTS_SRC"/*; do
+    # Pre-clean existing agents (only whitelist items)
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
+        base="${name%.md}"
+        # Only clean agents that match whitelist pattern
+        [[ "$base" != $INCLUDED_AGENT_PATTERN ]] && continue
         target="$AGENT_DISCOVERY/$name"
         [ -e "$target" ] || [ -L "$target" ] && rm -rf "$target"
     done
 
     agent_link_count=0
-    for agent_entry in "$AGENTS_SRC"/*; do
+    for agent_entry in "$LOCAL_AGENT_ROOT"/*; do
         [ -e "$agent_entry" ] || continue
         name=$(basename "$agent_entry")
         base="${name%.md}"
@@ -261,7 +410,7 @@ echo ""
 # --- Step 4: Clone PyPTO source repository ---
 step "[4/5] Preparing PyPTO source repository..."
 
-PYPTO_DIR="$PROJECT_ROOT/pypto"
+PYPTO_DIR="$PLUGIN_ROOT/pypto"
 if [ -d "$PYPTO_DIR" ] && [ -d "$PYPTO_DIR/.git" ]; then
     ok "PyPTO already exists: $PYPTO_DIR"
 else
@@ -276,6 +425,13 @@ else
     else
         warn "git not found — install git and clone manually: git clone https://gitcode.com/cann/pypto.git $PYPTO_DIR"
     fi
+fi
+
+# For global mode: also symlink pypto into CONFIG_ROOT so it can be discovered
+# from any working directory (not just the plugin directory)
+if [ "$LEVEL" = "global" ] && [ -d "$PYPTO_DIR" ]; then
+    ln -sfn "$(realpath "$PYPTO_DIR")" "$CONFIG_ROOT/pypto"
+    ok "pypto → $CONFIG_ROOT/"
 fi
 echo ""
 
@@ -302,12 +458,26 @@ if [ -d "$PYPTO_DIR/docs" ]; then
 else
     health_errors="${health_errors}\n  $(echo -e "${YELLOW}⚠${NC}") pypto repo not found — API Explorer / Design skills need docs/"
 fi
+# Check global pypto symlink
+if [ "$LEVEL" = "global" ] && [ ! -d "$CONFIG_ROOT/pypto" ]; then
+  health_errors="${health_errors}\n  ${YELLOW}⚠${NC} pypto symlink missing in $CONFIG_ROOT"
+fi
 
 # Check config file
-if [ "$TOOL" = "opencode" ]; then
-  [ -f "$CONFIG_ROOT/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing"; health_ok=false; }
+if [ "$LEVEL" = "project" ]; then
+    # Project-level: config file is in current directory (PWD)
+    if [ "$TOOL" = "opencode" ]; then
+        [ -f "$PWD/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing in current directory"; health_ok=false; }
+    else
+        [ -f "$PWD/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing in current directory"; health_ok=false; }
+    fi
 else
-  [ -f "$CONFIG_ROOT/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing"; health_ok=false; }
+    # Global-level: config file in CONFIG_ROOT
+    if [ "$TOOL" = "opencode" ]; then
+        [ -f "$CONFIG_ROOT/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing"; health_ok=false; }
+    else
+        [ -f "$CONFIG_ROOT/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing"; health_ok=false; }
+    fi
 fi
 
 # Generate brand manifest

@@ -5,7 +5,7 @@
   "main": ".opencode/plugins/cannbot.js",
   "files": [
     ".opencode/plugins/cannbot.js",
-    "ops/agents",
+    ".claude-plugin/marketplace.json",
     "ops/skills",
     "plugins-official"
   ]
