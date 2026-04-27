@@ -57,7 +57,7 @@ Usage: init.sh [level] [tool]
 
 Arguments:
   level   - Installation level: "project" (default) or "global"
-  tool    - Target tool: "opencode" (default) or "claude"
+  tool    - Target tool: "opencode" (default), "claude", or "trae"
 
 Options:
   --help  - Show this help message
@@ -67,14 +67,17 @@ Examples:
   init.sh project opencode     # Project-level, OpenCode
   init.sh global claude        # Global-level, Claude Code
   init.sh project claude       # Project-level, Claude Code
+  init.sh project trae         # Project-level, Trae
 
 Installation paths (CANNBot brand):
   OpenCode: .opencode/{skills,agents}/  (auto-discovered)
   Claude:   .claude/{skills,agents}/    (per-skill symlinks auto-created)
+  Trae:     .trae/{skills,agents}/      (per-skill symlinks, project-level only)
 
 After installation, launch directly:
   OpenCode: opencode
   Claude:   claude
+  Trae:     通过 CLI 或 IDE 启动
 EOF
 }
 
@@ -92,8 +95,8 @@ for arg in "$@"; do
     case "$arg" in
         --help)            show_help; exit 0 ;;
         global|project)    LEVEL="$arg" ;;
-        opencode|claude)   TOOL="$arg" ;;
-        *)  echo "Error: Unknown argument '$arg'. Valid: global, project, opencode, claude, --help."
+        opencode|claude|trae)   TOOL="$arg" ;;
+        *)  echo "Error: Unknown argument '$arg'. Valid: global, project, opencode, claude, trae, --help."
             exit 1 ;;
     esac
 done
@@ -102,12 +105,17 @@ done
 if [ "$LEVEL" = "global" ]; then
     if [ "$TOOL" = "opencode" ]; then
         CONFIG_ROOT="$HOME/.config/opencode"
+    elif [ "$TOOL" = "trae" ]; then
+        echo "Error: Global installation is not supported for Trae. Use project-level instead."
+        exit 1
     else
         CONFIG_ROOT="$HOME/.claude"
     fi
 else
     if [ "$TOOL" = "opencode" ]; then
         CONFIG_ROOT="$PLUGIN_ROOT/.opencode"
+    elif [ "$TOOL" = "trae" ]; then
+        CONFIG_ROOT="$PLUGIN_ROOT/.trae"
     else
         CONFIG_ROOT="$PLUGIN_ROOT/.claude"
     fi
@@ -190,14 +198,14 @@ echo ""
 echo -e "${CYAN}配置文件：${NC}"
 if [ "$LEVEL" = "project" ]; then
     # Project-level: config file should be in current directory (PWD)
-    if [ "$TOOL" = "opencode" ]; then
+    if [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; then
         config_target="$PWD/AGENTS.md"
     else
         config_target="$PWD/CLAUDE.md"
     fi
 else
     # Global-level: config file in CONFIG_ROOT
-    if [ "$TOOL" = "opencode" ]; then
+    if [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; then
         config_target="$CONFIG_ROOT/AGENTS.md"
     else
         config_target="$CONFIG_ROOT/CLAUDE.md"
@@ -205,9 +213,9 @@ else
 fi
 config_src="$PLUGIN_ROOT/AGENTS.md"
 # Skip only when source file is already at target location (same filename and same directory)
-# This only happens for OpenCode project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
+# This only happens for OpenCode/Trae project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
 # For Claude, source is AGENTS.md but target is CLAUDE.md, so always need symlink
-if [ "$TOOL" = "opencode" ] && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
+if { [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; } && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
     echo -e "  ${GREEN}$(basename "$config_target")${NC} → 已存在于当前目录，无需创建软链接"
 elif [ -e "$config_target" ] || [ -L "$config_target" ]; then
     echo -e "  ${YELLOW}$(basename "$config_target")${NC} → 将被替换为软连接到 ${config_src}"
@@ -286,7 +294,7 @@ if [ "$TOOL" = "opencode" ]; then
     step1_summary="${step1_summary}agents(${agent_count})"
     ok "Linked: $step1_summary"
 else
-    # Claude: create directories (per-item symlinks handled in Step 3)
+    # Trae/Claude: create directories (per-item symlinks handled in Step 3)
     mkdir -p "$CONFIG_ROOT/skills" "$CONFIG_ROOT/agents"
     ok "Prepared: skills/, agents/"
 fi
@@ -299,7 +307,7 @@ step "[2/4] Installing configuration..."
 # Determine target path for config file
 if [ "$LEVEL" = "project" ]; then
     # Project-level: config file should be in current directory (PWD)
-    if [ "$TOOL" = "opencode" ]; then
+    if [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; then
         config_target="$PWD/AGENTS.md"
     else
         config_target="$PWD/CLAUDE.md"
@@ -307,7 +315,7 @@ if [ "$LEVEL" = "project" ]; then
 else
     # Global-level: config file in CONFIG_ROOT
     mkdir -p "$CONFIG_ROOT"
-    if [ "$TOOL" = "opencode" ]; then
+    if [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; then
         config_target="$CONFIG_ROOT/AGENTS.md"
     else
         config_target="$CONFIG_ROOT/CLAUDE.md"
@@ -317,9 +325,9 @@ fi
 config_src="$PLUGIN_ROOT/AGENTS.md"
 
 # Skip only when source file is already at target location (same filename and same directory)
-# This only happens for OpenCode project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
+# This only happens for OpenCode/Trae project-level when PLUGIN_ROOT = PWD (AGENTS.md → AGENTS.md)
 # For Claude, source is AGENTS.md but target is CLAUDE.md, so always need symlink
-if [ "$TOOL" = "opencode" ] && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
+if { [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; } && [ "$LEVEL" = "project" ] && [ "$PLUGIN_ROOT" = "$PWD" ]; then
     ok "$(basename "$config_target") already in current directory"
 else
     ln -sf "$config_src" "$config_target"
@@ -334,7 +342,7 @@ if [ "$TOOL" = "opencode" ]; then
     # OpenCode: skills/ agents already at auto-scan paths, no extra discovery needed
     ok "Auto-scan: skills/, agents/"
 else
-    # Claude: create per-skill discovery symlinks (with filter, from shared ops/skills)
+    # Trae/Claude: create per-skill discovery symlinks (with filter, from shared ops/skills)
     DISCOVERY="$CONFIG_ROOT/skills"
 
     # Pre-clean existing skills (only whitelist items)
@@ -421,14 +429,14 @@ done
 # Check config file
 if [ "$LEVEL" = "project" ]; then
     # Project-level: config file is in current directory (PWD)
-    if [ "$TOOL" = "opencode" ]; then
+    if [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; then
         [ -f "$PWD/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing in current directory"; health_ok=false; }
     else
         [ -f "$PWD/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing in current directory"; health_ok=false; }
     fi
 else
     # Global-level: config file in CONFIG_ROOT
-    if [ "$TOOL" = "opencode" ]; then
+    if [ "$TOOL" = "opencode" ] || [ "$TOOL" = "trae" ]; then
         [ -f "$CONFIG_ROOT/AGENTS.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} AGENTS.md missing"; health_ok=false; }
     else
         [ -f "$CONFIG_ROOT/CLAUDE.md" ] || { health_errors="${health_errors}\n  ${RED}✗${NC} CLAUDE.md missing"; health_ok=false; }
@@ -482,6 +490,9 @@ echo ""
 echo -e "  ${BOLD}Quick Start:${NC}"
 if [ "$TOOL" = "opencode" ]; then
   echo -e "  ${CYAN}1.${NC} 启动 CLI: ${GREEN}opencode${NC}"
+  echo -e "  ${CYAN}2.${NC} 告诉 CANNBot: ${GREEN}${BOLD}检视算子文件：moe_init_routing/op_kernel/moe_init_routing.h${NC}"
+elif [ "$TOOL" = "trae" ]; then
+  echo -e "  ${CYAN}1.${NC} 通过 CLI/IDE 启动${NC}"
   echo -e "  ${CYAN}2.${NC} 告诉 CANNBot: ${GREEN}${BOLD}检视算子文件：moe_init_routing/op_kernel/moe_init_routing.h${NC}"
 else
   echo -e "  ${CYAN}1.${NC} 启动 CLI: ${GREEN}claude${NC}"

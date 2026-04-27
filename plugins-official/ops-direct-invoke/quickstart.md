@@ -48,6 +48,18 @@ bash init.sh project opencode   # 项目级（默认）
 bash init.sh global opencode    # 全局级
 ```
 
+### Trae
+
+仅支持项目级安装。
+
+```bash
+git clone https://gitcode.com/cann/skills.git
+cd skills/plugins-official/ops-direct-invoke
+bash init.sh project trae
+```
+
+安装后在项目根目录生成 `.trae/` 目录，结构与 Claude/OpenCode 基本一致。
+
 ### 验证安装
 
 ```bash
@@ -58,6 +70,10 @@ claude plugin list
 # OpenCode
 opencode agent list
 # 应看到 ascendc-kernel-architect / ascendc-kernel-developer / ascendc-kernel-reviewer
+
+# Trae
+ls .trae/
+# 应看到 skills/ agents/ AGENTS.md cannbot-manifest.json
 ```
 
 ## 二、快速上手
@@ -71,6 +87,8 @@ claude
 # OpenCode
 opencode
 ```
+
+> **Trae 用户**：Trae 通过 IDE 启动，`.trae/` 目录中的配置会自动加载。安装完成后在 IDE 中直接打开项目即可。
 
 ### 开发算子示例
 
@@ -150,6 +168,9 @@ bash init.sh --help
 
 # OpenCode (init.sh 方式)
 cd skills/plugins-official/ops-direct-invoke && bash init.sh
+
+# Trae
+cd skills/plugins-official/ops-direct-invoke && bash init.sh project trae
 ```
 
 ### Q: 算子直调模式和算子仓模式如何选择？
@@ -168,6 +189,6 @@ cd skills/plugins-official/ops-direct-invoke && bash init.sh
 ## 总结
 
 1. 算子直调模式适合快速验证和学习，开发周期短
-2. Claude Code 用户用 `/plugin install` 一键安装，OpenCode 用户用 `init.sh` 脚本安装
+2. Claude Code 用户用 `/plugin install` 一键安装，OpenCode/Trae 用户用 `init.sh` 脚本安装
 3. 所有算子开发任务会自动加载工作流技能，按阶段执行
 4. 产出物可直接编译运行，快速验证算子功能
