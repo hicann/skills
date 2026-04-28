@@ -1,6 +1,6 @@
 # Layer Norm profiler 参考目录
 
-本目录为 **`ascend-kernel/csrc/ops/layer_norm/test/`** 中与 `torch_npu.profiler` 性能对比相关文件的镜像，供技能 **torch-ops-profiler**（`skills/ops/skills/torch-ops-profiler/SKILL.md`）查阅与拷贝模板。
+本目录为 **`ascend-kernel/csrc/ops/layer_norm/test/`** 中与 `torch_npu.profiler` 性能对比相关文件的镜像，供技能 **torch-ops-profiler**（详见本技能 SKILL.md）查阅与拷贝模板。
 
 ## 约定
 

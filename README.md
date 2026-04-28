@@ -129,7 +129,7 @@ bash init.sh project claude     # Claude Code 用户
 git clone https://gitcode.com/cann/skills.git
 cd skills
 # OpenCode 用户
-mkdir -p .opencode && ln -s ../ops/skills .opencode/skills && ln -s ../ops/agents .opencode/agents
+mkdir -p .opencode && ln -s ../ops .opencode/skills
 # Claude 用户：将 .opencode 替换为 .claude
 ```
 
@@ -149,13 +149,8 @@ opencode
 
 ```
 skills/
-├── ops/                    # 算子 Skills/Agents/Teams（正式版）
-│   ├── skills/             # 算子技能模块（Ascend C + PyPTO）
-│   ├── agents/             # 子 Agent
-│   └── teams/              # 多 Agent 协同
-│       ├── ops-direct-invoke/   # 算子 <<<>>> 直调开发流程
-│       └── pypto-op-orchestrator/  # PyPTO 算子开发流程
-├── ops-lab/               # 算子 Skills / Agents（实验 / 非正式版）
+├── ops/                    # 算子 Skills（正式版：Ascend C + PyPTO）
+├── ops-lab/               # 算子 Skills（实验 / 非正式版）
 ├── model/                 # 模型推理优化
 │   ├── skills/            # 推理优化技能模块
 │   ├── agents/            # 子 Agent（analyzer / implementer / reviewer）

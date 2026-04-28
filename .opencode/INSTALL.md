@@ -132,7 +132,7 @@ cd plugins-official/ops-direct-invoke && bash init.sh global opencode
 ### Skills not found
 
 1. Check if skills directory exists:
-   - Plugin mode: `ls ~/.cache/opencode/packages/cannbot*/node_modules/cannbot/ops/skills/`
+   - Plugin mode: `ls ~/.cache/opencode/packages/cannbot*/node_modules/cannbot/ops/`
    - Script mode: `ls ~/.config/opencode/skills/`
 2. Verify AGENTS.md is accessible
 3. Restart OpenCode

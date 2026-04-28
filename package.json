@@ -6,7 +6,7 @@
   "files": [
     ".opencode/plugins/cannbot.js",
     ".claude-plugin/marketplace.json",
-    "ops/skills",
+    "ops",
     "plugins-official"
   ]
 }

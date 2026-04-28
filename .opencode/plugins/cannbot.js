@@ -28,8 +28,10 @@ const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const TEAMS_DIR = path.join(REPO_ROOT, 'plugins-official');
+// Legacy fallback: agents were moved to per-team dirs during cd5b220 refactor.
+// This path no longer exists; all uses are guarded by fs.existsSync.
 const SHARED_AGENTS_DIR = path.join(REPO_ROOT, 'ops/agents');
-const SHARED_SKILLS_DIR = path.join(REPO_ROOT, 'ops/skills');
+const SHARED_SKILLS_DIR = path.join(REPO_ROOT, 'ops');
 
 const DEFAULT_TEAM = 'ops-direct-invoke';
 const CONTEXT_TAG = 'CANNBOT_CONTEXT';
@@ -170,7 +172,7 @@ const safeUnlinkStaleSymlink = (dst, allowedPrefix) => {
  *
  * Agents are collected by scanning every team directory under plugins-official/
  * because the shared ops/agents pool was emptied during the cd5b220 refactor.
- * Skills are taken from the ops/skills shared pool (no per-team skills dirs exist).
+ * Skills are taken from the ops shared pool (no per-team skills dirs exist).
  */
 const loadAllDeps = () => {
   let agents = [];

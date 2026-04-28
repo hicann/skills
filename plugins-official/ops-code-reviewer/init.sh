@@ -29,7 +29,7 @@ VERSION="1.0.0"
 
 # --- Plugin-specific filters ---
 EXCLUDED_SKILL=""
-# Skill whitelist (space-separated list) - references shared ops/skills
+# Skill whitelist (space-separated list) - references shared ops
 INCLUDED_SKILLS="ascendc-code-review ascendc-docs-search ascendc-task-focus ascendc-api-best-practices"
 # Agent whitelist (shell pattern) - uses local agents/
 INCLUDED_AGENT_PATTERN="ascendc-ops-reviewer"
@@ -88,8 +88,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$SCRIPT_DIR"
 # Agents: use local agents/ directory (migrated with plugin)
 LOCAL_AGENT_ROOT="$PLUGIN_ROOT/agents"
-# Skills: reference shared ops/skills directory
-SHARED_SKILL_ROOT="$(cd "$PLUGIN_ROOT/../../ops/skills" && pwd)"
+# Skills: reference shared ops directory
+SHARED_SKILL_ROOT="$(cd "$PLUGIN_ROOT/../../ops" && pwd)"
 
 for arg in "$@"; do
     case "$arg" in
@@ -141,7 +141,7 @@ echo ""
 # --- Step 0: Confirmation before installation ---
 step "[0/4] Checking items to be installed..."
 
-# Collect skills to install (from shared ops/skills)
+# Collect skills to install (from shared ops)
 SKILLS_TO_INSTALL=""
 SKILL_COUNT=0
 for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
@@ -169,7 +169,7 @@ done
 echo ""
 echo -e "${BOLD}以下内容将被安装/替换：${NC}"
 echo ""
-echo -e "${CYAN}Skills (${SKILL_COUNT} 项，来自共享 ops/skills)：${NC}"
+echo -e "${CYAN}Skills (${SKILL_COUNT} 项，来自共享 ops 目录)：${NC}"
 for name in $SKILLS_TO_INSTALL; do
     target="$CANNBOT_DIR/skills/$name"
     src="$SHARED_SKILL_ROOT/$name"
@@ -247,7 +247,7 @@ mkdir -p "$CANNBOT_DIR"
 step1_summary=""
 step1_warns=""
 if [ "$TOOL" = "opencode" ]; then
-    # OpenCode: per-item symlinks for skills (from shared ops/skills, whitelist filtered)
+    # OpenCode: per-item symlinks for skills (from shared ops, whitelist filtered)
     mkdir -p "$CANNBOT_DIR/skills"
     # Pre-clean existing skill symlinks (only whitelist items)
     for skill_dir in "$SHARED_SKILL_ROOT"/*/; do
@@ -342,7 +342,7 @@ if [ "$TOOL" = "opencode" ]; then
     # OpenCode: skills/ agents already at auto-scan paths, no extra discovery needed
     ok "Auto-scan: skills/, agents/"
 else
-    # Trae/Claude: create per-skill discovery symlinks (with filter, from shared ops/skills)
+    # Trae/Claude: create per-skill discovery symlinks (with filter, from shared ops)
     DISCOVERY="$CONFIG_ROOT/skills"
 
     # Pre-clean existing skills (only whitelist items)

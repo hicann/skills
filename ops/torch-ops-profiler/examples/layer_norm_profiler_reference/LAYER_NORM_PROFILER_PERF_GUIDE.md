@@ -2,7 +2,7 @@
 
 采集必须使用 **`torch_npu.profiler`**（`profile`、`schedule`、`tensorboard_trace_handler`、`prof.step()`，且单次 `with` 内迭代步数与 schedule 一致）。
 
-通用流程与目录约定见技能 **torch-ops-profiler**（`skills/ops/skills/torch-ops-profiler/SKILL.md`）。
+通用流程与目录约定见技能 **torch-ops-profiler**（详见本技能 SKILL.md）。
 
 ## 本算子约定
 
