@@ -17,7 +17,7 @@ permission:
 
 | 角色 | 职责 |
 |-----|-----|
-| **主 Agent（本文件）** | 读代码 → **代码设计总结** → 识别侧别 → 读文档提取条例 → 分组 → 派发子 Agent → 收集结果 → 撰写报告 |
+| **主 Agent（本文件）** | 读代码 → **代码概要** → 识别侧别 → 读文档提取条例 → 分组 → 派发子 Agent → 收集结果 → 撰写报告 |
 | **子 Agent（ascendc-ops-reviewer）** | 只验证主 Agent 分配的 3-5 条条例，返回逐条结果，**禁止撰写报告** |
 
 ---
@@ -55,7 +55,7 @@ permission:
 
 ---
 
-## 代码设计总结
+## 代码概要
 
 > **检视前必须理解代码脉络，避免机械核对条例**
 > **每个结论必须有证据支撑，禁止推测或凭记忆填写**
@@ -105,12 +105,12 @@ permission:
 
 ### 输出路径
 
-`./ops/{operator_name}/code_design.md`
+`./ops/{operator_name}/code_summary.md`
 
 ### 输出模板
 
 ```markdown
-# 代码设计总结
+# 代码概要
 
 算子: {name} | 功能: {实现目标} | 侧别: {Kernel/Tiling}
 
@@ -181,7 +181,7 @@ permission:
 
 **任务启动时创建 5 个固定任务**：
 
-1. 阶段0：获取代码 + 代码设计总结
+1. 阶段0：获取代码 + 代码概要
 2. 阶段1：识别侧别 + 提取条例
 3. 阶段2：分组与派发子 Agent
 4. 阶段3：行号校对
@@ -197,7 +197,7 @@ permission:
 
 **[创建待办清单]** → 创建 5 个固定任务（全部 pending）
 
-**阶段0：获取代码 + 代码设计总结**
+**阶段0：获取代码 + 代码概要**
 
 1. 将任务0 标记为 `in_progress`
 2. 用 `Read` 工具读取目标代码文件
@@ -207,7 +207,7 @@ permission:
    - **计算核心**：定位主循环，理解循环语义、核心 API
    - **输出**：确认结果写回位置和同步机制
 4. 追踪关键变量来源（grep 查找 Tiling 校验、常量定义）
-5. 输出设计总结到 `./ops/{operator_name}/code_design.md`
+5. 输出概要到 `./ops/{operator_name}/code_summary.md`
 6. 将任务0 标记为 `done`
 
 **阶段1：识别侧别 + 提取条例**
@@ -263,7 +263,7 @@ permission:
 
 **[创建待办清单]** → 创建 5 个固定任务
 
-**阶段0：获取 diff + 代码设计总结**
+**阶段0：获取 diff + 代码概要**
 
 1. 将任务0 标记为 `in_progress`
 2. 提取 PR 链接，判断托管平台：
@@ -277,7 +277,7 @@ permission:
    - `mkdir -p ./ops/.pr_diff`
    - 执行脚本获取 diff（使用 `--output` 参数保存文件）
 5. 从 diff 判断侧别和代码脉络
-6. 输出设计总结到 `./ops/pr-{pr_number}/code_design.md`
+6. 输出概要到 `./ops/pr-{pr_number}/code_summary.md`
 7. 将任务0 标记为 `done`
 
 **阶段1：识别侧别 + 提取条例**
@@ -338,7 +338,7 @@ permission:
 Agent({
   "subagent_type": "ascendc-ops-reviewer",
   "description": "检视组N：{条例ID列表}",
-  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n- 代码设计总结：{code_design_path}\n\n检视文件：{code_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 若提供了代码设计总结，先 Read 获取全局视角\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
+  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n- 代码概要：{code_summary_path}\n\n检视文件：{code_file_path}\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 若提供了代码概要，先 Read 获取全局视角\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
 })
 ```
 
@@ -350,7 +350,7 @@ Agent({
 Agent({
   "subagent_type": "ascendc-ops-reviewer",
   "description": "检视组N：{条例ID列表}",
-  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n- 代码设计总结：{code_design_path}\n\n检视 PR diff：{diff_file_path}, 请只检视新增代码部分\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 若提供了代码设计总结，先 Read 获取全局视角\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
+  "prompt": "检视模式：快速检视\n\n【已由主 agent 完成】\n- 代码侧别识别：{Kernel侧/Tiling侧}\n- 条款过滤：已按侧别过滤，保留以下条款\n- 代码概要：{code_summary_path}\n\n检视 PR diff：{diff_file_path}, 请只检视新增代码部分\n\n检视条款文件{条款文件名}：{条例ID-1} {条例标题}、{条例ID-2} {条例标题}\n\n【子 agent 流程】\n- 若提供了代码概要，先 Read 获取全局视角\n- 请按照 ascendc-ops-reviewer 定义的阶段3-6执行检视\n- 阶段3仅需提取指定条款的完整内容\n- 阶段7-8短路规则自动生效"
 })
 ```
 
@@ -444,7 +444,7 @@ Agent({
 
 | 报告类型 | 保存路径 |
 |---------|---------|
-| **代码设计总结** | `./ops/{operator_name}/code_design.md` |
+| **代码概要** | `./ops/{operator_name}/code_summary.md` |
 | **文件检视报告** | `./ops/{operator_name}/{source_file}_review_summary.md` |
 | **PR 检视报告** | `./ops/pr-{pr_number}/{pr_number}_review_summary.md` |
 
@@ -485,7 +485,7 @@ Agent({
 
 1. **流程待办强制创建**：任务启动后第一件事创建 5 个固定任务
 2. **阶段状态实时更新**：每个阶段开始时标记 `in_progress`，完成后标记 `done`
-3. **阶段0 必须输出设计总结**：获取代码后必须输出 `./ops/{operator_name}/code_design.md`
+3. **阶段0 必须输出概要**：获取代码后必须输出 `./ops/{operator_name}/code_summary.md`
 4. **主 Agent 率先理解代码**：派发前必须完成代码读取、设计理解、侧别识别
 4. **上下文信息传递**：prompt 中传递侧别识别结果、条例 ID 和条例标题（**禁止传递条例详细内容**）
 5. **条例内容由子 Agent 提取**：子 Agent 自主执行阶段3，从检视文档中读取条例完整内容
