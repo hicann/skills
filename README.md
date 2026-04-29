@@ -301,6 +301,7 @@ skills/
 | **ascendc-code-review** | 代码检视方法论、5 大类别规范 | — |
 | **ascendc-task-focus** | 任务聚焦，解决长任务“迷失在中间”的问题 | — |
 | **ascendc-whitebox-design** | 白盒测试用例设计与生成 | — |
+| **ascendc-registry-invoke-template** | 完整自定义算子工程模板，提供标准工程结构、代码模板、UT/ST 样例和多芯片架构参考 | — |
 | **ascendc-registry-invoke-to-direct-invoke** | 注册调用算子转 `<<<>>>` kernel 直调 | [查看](docs/skills-usage.md#ascendc-registry-invoke-to-direct-invoke) |
 | **ascendc-direct-invoke-template** | Kernel 直调工程模板，提供验证过的样例工程和修改指南 | — |
 | **ops-profiling** | NPU 性能采集与分析，CSV 指标解读、瓶颈定位、优化建议 | — |
