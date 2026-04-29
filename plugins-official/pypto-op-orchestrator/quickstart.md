@@ -2,7 +2,7 @@
 
 ## 概述
 
-CANNBot PyPTO 算子开发模式适用于通过 **PyPTO（Python Tensor Processing Operator）** 框架开发自定义算子。采用 7 阶段状态机驱动，覆盖从需求理解到性能调优的完整开发流程，支持断点续跑与失败恢复。
+CANNBot PyPTO 算子开发模式适用于通过 PyPTO 开发自定义算子。采用 7 阶段状态机驱动，覆盖从需求理解到性能调优的完整开发流程，支持断点续跑与失败恢复。
 
 ### 与 Kernel 直调开发的区别
 
