@@ -17,6 +17,8 @@
 &nbsp;
 
 ## 🔥 最新动态
+- **2026-04-29** — 新增自定义算子注册调用的脚手架工程，支持通过ACLNN和GEIR接入，ascendc-registry-invoke-template的Skill。
+- **2026-04-28** — 新增支持TRAE安装。
 - **2026-04-25** — 增强 ascendc-precision-debug和ascendc-runtime-debug的调试能力。
 - **2026-04-24** — 新增 Ascend C 性能调优知识货架。
 - **2026-04-23** — 在 Readme.md 新增 Skills 的使用样例。
@@ -42,7 +44,7 @@
 
 ```bash
 # 注册 marketplace（首次）
-/plugin marketplace add https://gitcode.com/cann/skills.git
+/plugin marketplace add https://gitcode.com/cann/cannbot-skills.git
 # 安装 Ascend C 算子直调开发
 /plugin install ops-direct-invoke@cannbot
 # 或安装 PyPTO 算子开发
@@ -58,15 +60,15 @@
 
 ```bash
 # 项目级安装
-opencode plugin cannbot@git+https://gitcode.com/cann/skills.git
+opencode plugin cannbot@git+https://gitcode.com/cann/cannbot-skills.git
 # 全局安装（所有项目可用）
-opencode plugin cannbot@git+https://gitcode.com/cann/skills.git -g
+opencode plugin cannbot@git+https://gitcode.com/cann/cannbot-skills.git -g
 ```
 
 安装后重启 OpenCode。按 Team 精简安装需编辑 `.opencode/opencode.json`：
 ```json
 {
-  "plugin": [["cannbot@git+https://gitcode.com/cann/skills.git", {"team": "ops-direct-invoke"}]]
+  "plugin": [["cannbot@git+https://gitcode.com/cann/cannbot-skills.git", {"team": "ops-direct-invoke"}]]
 }
 ```
 
@@ -89,7 +91,7 @@ Fetch and follow instructions from https://gitcode.com/cann/skills/blob/.opencod
 适用于 Ascend C 算子直调开发场景，自动安装 Skills、配置文件及 asc-devkit 工具包。
 
 ```bash
-git clone https://gitcode.com/cann/skills.git
+git clone https://gitcode.com/cann/cannbot-skills.git
 cd skills/plugins-official/ops-direct-invoke
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
@@ -100,7 +102,7 @@ bash init.sh project claude     # Claude Code 用户
 **PyPTO 算子开发**
 
 ```bash
-git clone https://gitcode.com/cann/skills.git
+git clone https://gitcode.com/cann/cannbot-skills.git
 cd skills/plugins-official/pypto-op-orchestrator
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
@@ -113,7 +115,7 @@ bash init.sh project claude     # Claude Code 用户
 适用于 PyTorch 模型的昇腾 NPU 推理性能优化场景。
 
 ```bash
-git clone https://gitcode.com/cann/skills.git
+git clone https://gitcode.com/cann/cannbot-skills.git
 cd skills/model/teams/infer-model-optimize-team
 bash init.sh project opencode   # OpenCode 用户（默认）
 bash init.sh project claude     # Claude Code 用户
@@ -126,7 +128,7 @@ bash init.sh project claude     # Claude Code 用户
 仅安装 Skills 和 Agents，适用于自定义配置场景。
 
 ```bash
-git clone https://gitcode.com/cann/skills.git
+git clone https://gitcode.com/cann/cannbot-skills.git
 cd skills
 # OpenCode 用户
 mkdir -p .opencode && ln -s ../ops .opencode/skills
